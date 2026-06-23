@@ -7,7 +7,7 @@ jobs:
   prettier:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - run: bunx prettier . --write
       - uses: autofix-ci/action@v1.3.4
