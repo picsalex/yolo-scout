@@ -38,6 +38,7 @@ dependencies = [
     "PyYAML>=6.0.3",
     "tqdm>=4.67.3",
     "umap-learn>=0.5.11",
+    "numba>=0.59.0",
     "opencv-python-headless>=4.13.0.92",
 ]
 
