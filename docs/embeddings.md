@@ -88,8 +88,10 @@ For tasks with spatial annotations (detect, segment, pose, obb):
 ## Batch size
 
 The `batch` parameter controls how many images are processed at once during
-embedding computation. Increase it for faster processing on GPUs with more
-memory:
+embedding computation. For patch embeddings, it also bounds how many
+annotation crops are held in memory at once, which matters most on datasets
+with a very large number of annotations. Increase it for faster processing on
+GPUs with more memory:
 
 ```bash
 # Default batch size (16)

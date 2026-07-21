@@ -1,11 +1,13 @@
 """Compute embeddings for images and patches."""
 
-from typing import Dict
+from collections import defaultdict
+from typing import Dict, List
 
 import fiftyone as fo
 import fiftyone.brain as fob
 import fiftyone.zoo as foz
 import numpy as np
+from PIL import Image
 from tqdm import tqdm
 
 from yolo_scout.core.constants import (
@@ -15,7 +17,7 @@ from yolo_scout.core.constants import (
     get_field_name,
 )
 from yolo_scout.core.enums import DatasetTask
-from yolo_scout.embeddings.preprocessing import extract_all_patch_crops
+from yolo_scout.embeddings.preprocessing import iter_patch_crops
 from yolo_scout.utils.logger import logger
 
 
@@ -120,27 +122,13 @@ def _compute_patch_embeddings(
     Returns:
         Dict mapping sample_id -> (num_patches, embedding_dim) numpy array
     """
-    # Extract all crops
-    all_crops, sample_id_per_crop = extract_all_patch_crops(
-        dataset=dataset,
-        patches_field=patches_field,
-        dataset_task=dataset_task,
-        background_color=(114, 114, 114),
-        mask_background=mask_background,
-    )
+    per_sample_embeddings: Dict[str, List[np.ndarray]] = defaultdict(list)
+    crop_buffer: List[Image.Image] = []
+    sample_id_buffer: List[str] = []
+    total_crops = 0
 
-    if not all_crops:
-        logger.warning("No crops extracted from dataset")
-        return {}
-
-    logger.info(f"Extracted {len(all_crops)} crops, computing embeddings...")
-
-    # Batch inference
-    all_embeddings_list = []
-
-    for i in tqdm(range(0, len(all_crops), batch_size), desc="Computing embeddings"):
-        batch = all_crops[i : i + batch_size]
-        batch_embeds = model.embed_all(batch)
+    def _embed_buffer() -> None:
+        batch_embeds = model.embed_all(crop_buffer)
 
         # Convert to numpy array if needed
         if hasattr(batch_embeds, "cpu"):
@@ -148,20 +136,42 @@ def _compute_patch_embeddings(
         elif not isinstance(batch_embeds, np.ndarray):
             batch_embeds = np.array(batch_embeds)
 
-        all_embeddings_list.append(batch_embeds)
+        sample_id_buffer_array = np.array(sample_id_buffer)
+        for sample_id in np.unique(sample_id_buffer_array):
+            mask = sample_id_buffer_array == sample_id
+            per_sample_embeddings[sample_id].append(batch_embeds[mask])
 
-    # Concatenate all embeddings
-    all_embeddings = np.vstack(all_embeddings_list)
+    # Stream crops and embed them in bounded-size batches, so at most
+    # `batch_size` crops are held in memory at once regardless of dataset size
+    crop_stream = iter_patch_crops(
+        dataset=dataset,
+        patches_field=patches_field,
+        dataset_task=dataset_task,
+        background_color=(114, 114, 114),
+        mask_background=mask_background,
+    )
 
-    # Group embeddings by sample_id
-    embeddings_dict = {}
-    sample_id_per_crop_array = np.array(sample_id_per_crop)
+    for sample_id, crops in tqdm(crop_stream, desc="Computing embeddings"):
+        total_crops += len(crops)
+        crop_buffer.extend(crops)
+        sample_id_buffer.extend([sample_id] * len(crops))
 
-    for sample_id in np.unique(sample_id_per_crop_array):
-        # Find all embeddings belonging to this sample
-        mask = sample_id_per_crop_array == sample_id
-        embeddings_dict[sample_id] = all_embeddings[mask]
+        while len(crop_buffer) >= batch_size:
+            crop_buffer, remainder = crop_buffer[:batch_size], crop_buffer[batch_size:]
+            sample_id_buffer, sample_id_remainder = sample_id_buffer[:batch_size], sample_id_buffer[batch_size:]
+            _embed_buffer()
+            crop_buffer, sample_id_buffer = remainder, sample_id_remainder
 
-    logger.info(f"Successfully computed embeddings for {len(all_crops)} patches across {len(embeddings_dict)} samples")
+    if crop_buffer:
+        _embed_buffer()
+
+    if total_crops == 0:
+        logger.warning("No crops extracted from dataset")
+        return {}
+
+    # Concatenate each sample's accumulated batch-chunks into a single array
+    embeddings_dict = {sample_id: np.vstack(chunks) for sample_id, chunks in per_sample_embeddings.items()}
+
+    logger.info(f"Successfully computed embeddings for {total_crops} patches across {len(embeddings_dict)} samples")
 
     return embeddings_dict
