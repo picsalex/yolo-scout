@@ -1,6 +1,6 @@
 """Image preprocessing for embeddings computation."""
 
-from typing import List, Tuple
+from typing import Iterator, List, Tuple
 from functools import partial
 from multiprocessing import Pool, cpu_count
 
@@ -270,15 +270,18 @@ def process_sample_patches(
         return sample_id, []
 
 
-def extract_all_patch_crops(
+def iter_patch_crops(
     dataset: fo.Dataset,
     patches_field: str,
     dataset_task: DatasetTask,
     background_color: Tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> Tuple[List[Image.Image], List[str]]:
+) -> Iterator[Tuple[str, List[Image.Image]]]:
     """
-    Extract all patch crops from a dataset with multiprocessing.
+    Stream patch crops from a dataset with multiprocessing, one sample at a time.
+
+    Yields incrementally instead of materializing every crop in memory at once,
+    so callers can embed-and-discard crops in bounded-size batches.
 
     Args:
         dataset: FiftyOne dataset
@@ -287,8 +290,8 @@ def extract_all_patch_crops(
         background_color: RGB background color for masking (segment/obb only)
         mask_background: Whether to mask the background for segment/obb tasks (default: True)
 
-    Returns:
-        Tuple of (list_of_crops, sample_id_per_crop)
+    Yields:
+        Tuple of (sample_id, list_of_crops) for each sample that has patches
     """
     # Prepare sample data for workers
     sample_data_list = []
@@ -314,9 +317,9 @@ def extract_all_patch_crops(
 
     if not sample_data_list:
         logger.warning("No patches found in dataset")
-        return [], []
+        return
 
-    # Extract crops with multiprocessing
+    # Extract crops with multiprocessing, streaming results as they complete
     process_func = partial(
         process_sample_patches,
         background_color=background_color,
@@ -324,21 +327,10 @@ def extract_all_patch_crops(
     )
 
     with Pool(processes=max(1, cpu_count() - 1)) as pool:
-        results = list(
-            tqdm(
-                pool.imap(process_func, sample_data_list),
-                total=len(sample_data_list),
-                desc="Extracting crops",
-            )
-        )
-
-    # Flatten crops and track which sample each crop belongs to
-    all_crops = []
-    sample_id_per_crop = []
-
-    for sample_id, crops in results:
-        for crop in crops:
-            all_crops.append(Image.fromarray(crop))
-            sample_id_per_crop.append(sample_id)
-
-    return all_crops, sample_id_per_crop
+        for sample_id, crops in tqdm(
+            pool.imap(process_func, sample_data_list),
+            total=len(sample_data_list),
+            desc="Extracting crops",
+        ):
+            if crops:
+                yield sample_id, [Image.fromarray(crop) for crop in crops]
