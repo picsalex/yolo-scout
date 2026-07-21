@@ -884,14 +884,14 @@ toml = [
 
 [[package]]
 name = "cross-web"
-version = "0.4.1"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/58/e688e99d1493c565d1587e64b499268d0a3129ae59f4efe440aac395f803/cross_web-0.4.1.tar.gz", hash = "sha256:0466295028dcae98c9ab3d18757f90b0e74fac2ff90efbe87e74657546d9993d", size = 157385, upload-time = "2026-01-09T18:17:41.534Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/a0/bdb8370215987cc5bde497cb8b976b17ab14841566ecef2aab6ae3e6c7b0/cross_web-0.7.0.tar.gz", hash = "sha256:15fbc8b9a824a055db8127fd6e43e0773074f620fdecb6b2b587d3d0a2bdd459", size = 332407, upload-time = "2026-05-19T14:18:48.849Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/67/49/92b46b6e65f09b717a66c4e5a9bc47a45ebc83dd0e0ed126f8258363479d/cross_web-0.4.1-py3-none-any.whl", hash = "sha256:41b07c3a38253c517ec0603c1a366353aff77538946092b0f9a2235033f192c2", size = 14320, upload-time = "2026-01-09T18:17:40.325Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/4a/78b52ec2edcbd9b123638f4e0421fd8699ebe653ebf63ac5f82abd2665bc/cross_web-0.7.0-py3-none-any.whl", hash = "sha256:ddea9be3c68b48eaf16561847a5831a559786949c544b3701432e00a4e8d19d9", size = 25207, upload-time = "2026-05-19T14:18:47.614Z" },
 ]
 
 [[package]]
@@ -1104,7 +1104,7 @@ wheels = [
 
 [[package]]
 name = "fiftyone"
-version = "1.14.0"
+version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -1136,6 +1136,7 @@ dependencies = [
     { name = "pillow" },
     { name = "plotly" },
     { name = "pprintpp" },
+    { name = "protobuf" },
     { name = "psutil" },
     { name = "pydash" },
     { name = "pymongo" },
@@ -1161,14 +1162,14 @@ dependencies = [
     { name = "voxel51-eta" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/84/83/77e24fa09b0c7f28c851b07ba80c46674b3a7eadeaee142aa4f112e844d7/fiftyone-1.14.0.tar.gz", hash = "sha256:08c38da5298f2e518e9ea60c44f0db3b915bd4e12431518f2410f1864a6ff552", size = 17505879, upload-time = "2026-03-31T18:54:09.32Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/3d/a6adc7a808094882e603ab4d3235055fae951fcaf9bd2445c5513a29b0c5/fiftyone-1.17.0.tar.gz", hash = "sha256:ffc47ea388e887f8d7ffd20988bd112baf787166d430a43c2e60630cd87d75ed", size = 17569855, upload-time = "2026-06-09T00:01:14.9Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4f/5a/cd2fe4a9d825ebea92f78e1a8c9a696656328f38fecce0d19b2116e80748/fiftyone-1.14.0-py3-none-any.whl", hash = "sha256:05aa055a77b19c164edb202dfcd7a3e05cbde3729017d9ae9330d69ea4003088", size = 17722239, upload-time = "2026-03-31T18:54:06.555Z" },
+    { url = "https://files.pythonhosted.org/packages/56/ae/635982b362144ce9a762a6fa20b40b7f405d09155bdd426657d5260ae74b/fiftyone-1.17.0-py3-none-any.whl", hash = "sha256:aaad18c97b99f2faf2d923d6f32f6f4273bdb9b3b30b32d938590af65827d1c4", size = 17789496, upload-time = "2026-06-09T00:01:12.285Z" },
 ]
 
 [[package]]
 name = "fiftyone-brain"
-version = "0.21.5"
+version = "0.22.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1178,9 +1179,9 @@ dependencies = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/98/566fcf61a2051ad88667c2a89b3d7267a312de14a49bbe8243511f8f2e9b/fiftyone_brain-0.21.5.tar.gz", hash = "sha256:1f5777e97266ca304c5e63563c19e4bad8108870d1f537b86cec07a3081efead", size = 108551, upload-time = "2026-01-26T13:57:14.134Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/f9/e2bfc6a5b4ff06b99fdac8ee5261a0b598a07d4dcd43aabc127f4e7df3de/fiftyone_brain-0.22.0.tar.gz", hash = "sha256:85dfb275ff39d17673435c6521fc4f6bddda1b718021fc1bfaf3601d4e7b0e26", size = 108758, upload-time = "2026-06-03T20:37:02.244Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/48/676794632b26c8a0379deed8c7be30f9b1e9b98887de236e5189a3f92912/fiftyone_brain-0.21.5-py3-none-any.whl", hash = "sha256:5b71178e4994a1449183eb0d1211cce141ef11c74af7b413df89697236f322a3", size = 112827, upload-time = "2026-01-26T13:57:12.555Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/75/82c9277b0ec4dee835a47c50dc803163f1e1ab16d5a42e6a3427b753b891/fiftyone_brain-0.22.0-py3-none-any.whl", hash = "sha256:cac218d4630b80c5f7df07ed9ce822973554f002e1f6850c9d991e4727ac9bab", size = 112868, upload-time = "2026-06-03T20:37:00.717Z" },
 ]
 
 [[package]]
@@ -2861,6 +2862,21 @@ wheels = [
 ]
 
 [[package]]
+name = "protobuf"
+version = "6.33.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/70/e908e9c5e52ef7c3a6c7902c9dfbb34c7e29c25d2f81ade3856445fd5c94/protobuf-6.33.6.tar.gz", hash = "sha256:a6768d25248312c297558af96a9f9c929e8c4cee0659cb07e780731095f38135", size = 444531, upload-time = "2026-03-18T19:05:00.988Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/9f/2f509339e89cfa6f6a4c4ff50438db9ca488dec341f7e454adad60150b00/protobuf-6.33.6-cp310-abi3-win32.whl", hash = "sha256:7d29d9b65f8afef196f8334e80d6bc1d5d4adedb449971fefd3723824e6e77d3", size = 425739, upload-time = "2026-03-18T19:04:48.373Z" },
+    { url = "https://files.pythonhosted.org/packages/76/5d/683efcd4798e0030c1bab27374fd13a89f7c2515fb1f3123efdfaa5eab57/protobuf-6.33.6-cp310-abi3-win_amd64.whl", hash = "sha256:0cd27b587afca21b7cfa59a74dcbd48a50f0a6400cfb59391340ad729d91d326", size = 437089, upload-time = "2026-03-18T19:04:50.381Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/01/a3c3ed5cd186f39e7880f8303cc51385a198a81469d53d0fdecf1f64d929/protobuf-6.33.6-cp39-abi3-macosx_10_9_universal2.whl", hash = "sha256:9720e6961b251bde64edfdab7d500725a2af5280f3f4c87e57c0208376aa8c3a", size = 427737, upload-time = "2026-03-18T19:04:51.866Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/90/b3c01fdec7d2f627b3a6884243ba328c1217ed2d978def5c12dc50d328a3/protobuf-6.33.6-cp39-abi3-manylinux2014_aarch64.whl", hash = "sha256:e2afbae9b8e1825e3529f88d514754e094278bb95eadc0e199751cdd9a2e82a2", size = 324610, upload-time = "2026-03-18T19:04:53.096Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/ca/25afc144934014700c52e05103c2421997482d561f3101ff352e1292fb81/protobuf-6.33.6-cp39-abi3-manylinux2014_s390x.whl", hash = "sha256:c96c37eec15086b79762ed265d59ab204dabc53056e3443e702d2681f4b39ce3", size = 339381, upload-time = "2026-03-18T19:04:54.616Z" },
+    { url = "https://files.pythonhosted.org/packages/16/92/d1e32e3e0d894fe00b15ce28ad4944ab692713f2e7f0a99787405e43533a/protobuf-6.33.6-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593", size = 323436, upload-time = "2026-03-18T19:04:55.768Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/72/02445137af02769918a93807b2b7890047c32bfb9f90371cbc12688819eb/protobuf-6.33.6-py3-none-any.whl", hash = "sha256:77179e006c476e69bf8e8ce866640091ec42e1beb80b213c3900006ecfba6901", size = 170656, upload-time = "2026-03-18T19:04:59.826Z" },
+]
+
+[[package]]
 name = "psutil"
 version = "7.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4130,7 +4146,7 @@ wheels = [
 
 [[package]]
 name = "strawberry-graphql"
-version = "0.291.3"
+version = "0.316.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cross-web" },
@@ -4139,9 +4155,9 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/08/30/e183b75fbde7ce13c22ff4348fc5c5f41d277d56bb079eda00cfe79ed958/strawberry_graphql-0.291.3.tar.gz", hash = "sha256:81414e99bf84b08df9dae1709798a3d31a6bfe40635b58fd4b2904cd71759491", size = 217725, upload-time = "2026-02-07T08:32:04.507Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cf/09/f189fd3c70544322eeba0398ccaa980d17857894c0a66d447aa0b5704686/strawberry_graphql-0.316.0.tar.gz", hash = "sha256:bee5ce0e20d522325bd1ed2db186c812c03c2ea7db29f997b35e7d694649820c", size = 223985, upload-time = "2026-05-19T17:06:10.443Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/5c/7841327bd5ab23cd71c74dbb42e72eb7d83f898c7be9e0908cbfcb965b00/strawberry_graphql-0.291.3-py3-none-any.whl", hash = "sha256:ca0a2fdcaf631d05363d3a53390dc6829e7bd5948579ff185b6e4e1478687f95", size = 316383, upload-time = "2026-02-07T08:32:06.959Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/dd/b2cf54803cbd0d37e3ce73c7274bdb144ba83743bc83351b5790eb2a5fad/strawberry_graphql-0.316.0-py3-none-any.whl", hash = "sha256:222e16fbbf953f5a1fa75f62bf9a8e95f274180f928f70bec459b566053aa2cb", size = 326530, upload-time = "2026-05-19T17:06:07.844Z" },
 ]
 
 [[package]]
@@ -4559,7 +4575,7 @@ wheels = [
 
 [[package]]
 name = "voxel51-eta"
-version = "0.15.4"
+version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "argcomplete" },
@@ -4585,9 +4601,9 @@ dependencies = [
     { name = "tzlocal" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/92/cfef6b9de0f922fe77e93fb893ac4976df52465a136bdbeb5946bd1069ce/voxel51_eta-0.15.4.tar.gz", hash = "sha256:eff65f7f6442fac86a196f145e40c2fe51a17143b36a527996ee8e11e6a37fa3", size = 905854, upload-time = "2026-03-19T15:11:47.71Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/9d/dca784714ae4c2cfa0a05cb9475d3d4203d73fe0b9a76d26ae27b04b8c82/voxel51_eta-0.16.0.tar.gz", hash = "sha256:b2d8e8b76215c6798c34712b656f37790197ae9953d80850851031cd2bdc1bd5", size = 907367, upload-time = "2026-06-03T20:26:32.316Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/f8/ab2b00b0c830bdcaccd0a7640606edccd0c88187cfc3f118195b45efe9a4/voxel51_eta-0.15.4-py2.py3-none-any.whl", hash = "sha256:85986f1a3c1638ebeaffec1434a303c588a2f587290a7ada34005cad89c41c1b", size = 934583, upload-time = "2026-03-19T15:11:45.719Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/d0/fa153cbdbd0d35f1fbfe7eaddd1412fa4a58c192786dbf06a3a1687b5420/voxel51_eta-0.16.0-py2.py3-none-any.whl", hash = "sha256:07680b09763d048a2c57cc3194d5b502cec88ed1a42f82fb555dc1640177ed90", size = 935885, upload-time = "2026-06-03T20:26:30.052Z" },
 ]
 
 [[package]]
