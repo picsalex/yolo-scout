@@ -13,11 +13,6 @@ from tqdm import tqdm
 from yolo_scout.core.enums import DatasetTask
 from yolo_scout.utils.logger import logger
 
-# Crop extraction is CPU-bound and gains little past a few dozen workers.
-# Forking cpu_count() of them from an already large (torch/CUDA-loaded) process
-# is pure overhead on high-core-count machines, so cap it.
-MAX_CROP_EXTRACTION_WORKERS = 16
-
 
 def create_mask_from_polyline(
     polyline_points: List[List[float]],
@@ -331,7 +326,7 @@ def iter_patch_crops(
         mask_background=mask_background,
     )
 
-    with Pool(processes=min(MAX_CROP_EXTRACTION_WORKERS, max(1, cpu_count() - 1))) as pool:
+    with Pool(processes=max(1, cpu_count() - 1)) as pool:
         for sample_id, crops in tqdm(
             pool.imap(process_func, sample_data_list),
             total=len(sample_data_list),
