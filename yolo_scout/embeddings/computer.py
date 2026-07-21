@@ -1,5 +1,6 @@
 """Compute embeddings for images and patches."""
 
+import os
 from collections import defaultdict
 from typing import Dict, List
 
@@ -19,6 +20,11 @@ from yolo_scout.core.constants import (
 from yolo_scout.core.enums import DatasetTask
 from yolo_scout.embeddings.preprocessing import iter_patch_crops
 from yolo_scout.utils.logger import logger
+
+# FiftyOne defaults its image-embeddings DataLoader to cpu_count() // 2 workers,
+# each opening its own connection to the local embedded mongod. On high-core-count
+# machines that can spawn 70+ workers and overwhelm mongod. Cap it instead.
+MAX_IMAGE_EMBEDDING_WORKERS = 8
 
 
 def compute_embeddings(
@@ -54,6 +60,7 @@ def compute_embeddings(
             method="umap",
             brain_key=IMAGE_EMBEDDINGS_KEY,
             batch_size=batch_size,
+            num_workers=min(MAX_IMAGE_EMBEDDING_WORKERS, os.cpu_count() or 1),
             seed=0,
         )
         logger.info("Image embeddings and visualization computed successfully")
