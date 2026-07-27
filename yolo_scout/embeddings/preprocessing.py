@@ -1,6 +1,5 @@
 """Image preprocessing for embeddings computation."""
 
-from typing import List, Tuple
 from functools import partial
 from multiprocessing import Pool, cpu_count
 
@@ -15,8 +14,8 @@ from yolo_scout.utils.logger import logger
 
 
 def create_mask_from_polyline(
-    polyline_points: List[List[float]],
-    image_shape: Tuple[int, int, int],
+    polyline_points: list[list[float]],
+    image_shape: tuple[int, int, int],
 ) -> np.ndarray:
     """
     Create a binary mask from polyline points.
@@ -48,7 +47,7 @@ def create_mask_from_polyline(
 def apply_background_mask(
     image: np.ndarray,
     mask: np.ndarray,
-    background_color: Tuple[int, int, int] = (114, 114, 114),
+    background_color: tuple[int, int, int] = (114, 114, 114),
 ) -> np.ndarray:
     """
     Apply background masking to an image.
@@ -74,8 +73,8 @@ def apply_background_mask(
 
 
 def get_bbox_from_polyline(
-    polyline_points: List[List[float]],
-) -> Tuple[float, float, float, float]:
+    polyline_points: list[list[float]],
+) -> tuple[float, float, float, float]:
     """
     Compute normalized bounding box from polyline points.
 
@@ -100,8 +99,8 @@ def get_bbox_from_polyline(
 
 
 def normalize_bbox(
-    bbox: List[float],
-) -> Tuple[float, float, float, float]:
+    bbox: list[float],
+) -> tuple[float, float, float, float]:
     """
     Convert FiftyOne bbox format to (x_min, y_min, x_max, y_max).
 
@@ -117,8 +116,8 @@ def normalize_bbox(
 
 def crop_to_bbox(
     image: np.ndarray,
-    bbox: Tuple[float, float, float, float],
-    image_shape: Tuple[int, int],
+    bbox: tuple[float, float, float, float],
+    image_shape: tuple[int, int],
 ) -> np.ndarray:
     """
     Crop image to bounding box coordinates.
@@ -152,7 +151,7 @@ def crop_to_bbox(
 
 def create_crop_for_detection(
     image: np.ndarray,
-    bbox: List[float],
+    bbox: list[float],
 ) -> np.ndarray:
     """
     Create a crop for detection/pose tasks (no masking, just bbox crop).
@@ -170,8 +169,8 @@ def create_crop_for_detection(
 
 def create_masked_crop_for_polyline(
     image: np.ndarray,
-    polyline_points: List[List[float]],
-    background_color: Tuple[int, int, int] = (114, 114, 114),
+    polyline_points: list[list[float]],
+    background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
 ) -> np.ndarray:
     """
@@ -213,10 +212,10 @@ def create_masked_crop_for_polyline(
 
 
 def process_sample_patches(
-    sample_data: Tuple[str, str, str, List, DatasetTask],
-    background_color: Tuple[int, int, int] = (114, 114, 114),
+    sample_data: tuple[str, str, str, list, DatasetTask],
+    background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> Tuple[str, List[np.ndarray]]:
+) -> tuple[str, list[np.ndarray]]:
     """
     Process a single sample to extract all patch crops.
     This function is designed to be called by worker processes.
@@ -274,9 +273,9 @@ def extract_all_patch_crops(
     dataset: fo.Dataset,
     patches_field: str,
     dataset_task: DatasetTask,
-    background_color: Tuple[int, int, int] = (114, 114, 114),
+    background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> Tuple[List[Image.Image], List[str]]:
+) -> tuple[list[Image.Image], list[str]]:
     """
     Extract all patch crops from a dataset with multiprocessing.
 

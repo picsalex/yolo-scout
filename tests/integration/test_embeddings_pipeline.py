@@ -1,11 +1,11 @@
 """Integration tests for embeddings computation and storage."""
 
-import pytest
 import fiftyone as fo
+import pytest
 
 from yolo_scout.core.config import Config
+from yolo_scout.core.constants import DETECTION_FIELD, IMAGE_EMBEDDINGS_KEY, PATCH_EMBEDDINGS_KEY, get_field_name
 from yolo_scout.core.enums import DatasetTask, EmbeddingsModel
-from yolo_scout.core.constants import IMAGE_EMBEDDINGS_KEY, PATCH_EMBEDDINGS_KEY, DETECTION_FIELD, get_field_name
 from yolo_scout.dataset.loader import load_yolo_dataset
 from yolo_scout.embeddings.computer import compute_embeddings
 

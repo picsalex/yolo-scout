@@ -5,7 +5,7 @@ import sys
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
 
@@ -51,7 +51,7 @@ class Config:
         return cls._from_dict(config_dict)
 
     @classmethod
-    def _from_dict(cls, cfg: Dict[str, Any]) -> "Config":
+    def _from_dict(cls, cfg: dict[str, Any]) -> "Config":
         """Create Config instance from flat dictionary."""
         return cls(
             data=cfg["data"],
@@ -72,7 +72,7 @@ class Config:
         )
 
 
-def _load_defaults() -> Dict[str, Any]:
+def _load_defaults() -> dict[str, Any]:
     try:
         with files("yolo_scout").joinpath("cfg/default.yaml").open("r", encoding="utf-8") as f:
             return yaml.safe_load(f)
@@ -144,7 +144,7 @@ def handle_special_commands() -> None:
         sys.exit(0)
 
 
-def _parse_arguments() -> Dict[str, Any]:
+def _parse_arguments() -> dict[str, Any]:
     """Parse key=value style command-line arguments."""
     args = {}
     for token in sys.argv[1:]:
@@ -173,7 +173,7 @@ def _to_bool(v: Any) -> bool:
     return str(v).lower() in ("true", "1", "yes")
 
 
-def _build_config_dict(args: Dict[str, Any]) -> Dict[str, Any]:
+def _build_config_dict(args: dict[str, Any]) -> dict[str, Any]:
     """Build configuration dictionary from default.yaml, optional config file, and CLI arguments.
     Precedence (highest last): defaults (cfg/default.yaml) → config file (if provided by the user) → CLI args.
     """

@@ -1,8 +1,7 @@
 """Compute IoU scores for overlapping annotations."""
 
-from shapely.geometry import Polygon, box
-
 import fiftyone as fo
+from shapely.geometry import Polygon, box
 
 from yolo_scout.core.enums import DatasetTask
 from yolo_scout.utils.logger import logger

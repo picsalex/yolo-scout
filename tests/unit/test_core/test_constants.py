@@ -1,13 +1,13 @@
 """Tests for src.core.constants module."""
 
 from yolo_scout.core.constants import (
+    CLASSIFICATION_FIELD,
     DETECTION_FIELD,
     KEYPOINTS_FIELD,
-    SEGMENTATION_FIELD,
-    CLASSIFICATION_FIELD,
     OBB_FIELD,
-    get_field_name,
+    SEGMENTATION_FIELD,
     get_color_palette,
+    get_field_name,
 )
 from yolo_scout.core.enums import DatasetTask
 

@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Dict, Optional
 
 
 class DatasetTask(Enum):
@@ -34,7 +33,7 @@ class EmbeddingsModel(Enum):
     # SIGLIP
     SIGLIP_BASE_224 = "siglip_base_224"
 
-    def get_model_kwargs(self) -> Optional[Dict]:
+    def get_model_kwargs(self) -> dict | None:
         """
         Get model_kwargs for OpenCLIP models.
         Returns None for hosted models.

@@ -4,7 +4,6 @@ import hashlib
 import shutil
 import zipfile
 from pathlib import Path
-from typing import Dict
 from urllib.request import urlretrieve
 
 import pytest
@@ -289,10 +288,10 @@ def obb_dataset() -> Path:
 
 
 @pytest.fixture(scope="session")
-def all_datasets() -> Dict[str, Path]:
+def all_datasets() -> dict[str, Path]:
     """Provide all datasets as a dictionary."""
     download_and_extract_datasets()
-    return {dataset_type: get_dataset_path(dataset_type) for dataset_type in DATASET_PATHS.keys()}
+    return {dataset_type: get_dataset_path(dataset_type) for dataset_type in DATASET_PATHS}
 
 
 # ============================================================================

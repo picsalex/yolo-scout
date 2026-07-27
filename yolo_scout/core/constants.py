@@ -1,6 +1,5 @@
 """Constants used throughout the application."""
 
-from typing import Dict, List
 import matplotlib.pyplot as plt
 
 from yolo_scout.core.enums import DatasetTask
@@ -80,7 +79,7 @@ def get_field_name(task: DatasetTask) -> str:
         raise ValueError(f"Unsupported dataset task: {task}")
 
 
-def get_color_palette(labels: List[str]) -> List[Dict[str, str]]:
+def get_color_palette(labels: list[str]) -> list[dict[str, str]]:
     """
     Use the ultralytics color palette to generate a list of distinct colors.
     If more colors are needed than available in the palette, generate additional colors using a colormap.
@@ -101,7 +100,7 @@ def get_color_palette(labels: List[str]) -> List[Dict[str, str]]:
             # Generate additional colors using a colormap
             cmap = plt.get_cmap("hsv")
             color = cmap(i / num_labels)
-            color_hex = "#{:02x}{:02x}{:02x}".format(int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
+            color_hex = f"#{int(color[0] * 255):02x}{int(color[1] * 255):02x}{int(color[2] * 255):02x}"
         palette.append({"value": labels[i], "color": color_hex})
 
     return palette

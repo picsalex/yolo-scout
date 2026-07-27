@@ -1,7 +1,5 @@
 """Convert YOLO annotations to FiftyOne labels."""
 
-from typing import Dict, List, Optional
-
 import fiftyone as fo
 from shapely.geometry import Polygon
 
@@ -10,15 +8,15 @@ from yolo_scout.utils.path_utils import get_image_name
 
 
 def yolo_to_fiftyone(
-    annotations: Optional[List[Dict]],
+    annotations: list[dict] | None,
     task: DatasetTask,
-    class_names: List[str],
+    class_names: list[str],
     image_width: int,
     image_height: int,
     split: str,
     image_path: str,
     label_path: str,
-) -> Optional[fo.Label]:
+) -> fo.Label | None:
     """
     Convert YOLO annotations to FiftyOne labels.
 
@@ -90,12 +88,12 @@ def yolo_to_fiftyone(
 
 
 def _create_detection(
-    anno: Dict,
-    class_names: List[str],
+    anno: dict,
+    class_names: list[str],
     image_width: int,
     image_height: int,
     split: str,
-) -> Optional[fo.Detection]:
+) -> fo.Detection | None:
     """Create a FiftyOne Detection from parsed annotation."""
     x_center = anno["x_center"]
     y_center = anno["y_center"]
@@ -136,12 +134,12 @@ def _create_detection(
 
 
 def _create_keypoint(
-    anno: Dict,
-    class_names: List[str],
+    anno: dict,
+    class_names: list[str],
     image_width: int,
     image_height: int,
     split: str,
-) -> Optional[fo.Keypoint]:
+) -> fo.Keypoint | None:
     """Create a FiftyOne Keypoint from parsed annotation."""
     x_center = anno["x_center"]
     y_center = anno["y_center"]
@@ -199,12 +197,12 @@ def _create_keypoint(
 
 
 def _create_polygon(
-    anno: Dict,
-    class_names: List[str],
+    anno: dict,
+    class_names: list[str],
     image_width: int,
     image_height: int,
     split: str,
-) -> Optional[fo.Polyline]:
+) -> fo.Polyline | None:
     """Create a FiftyOne Polyline (polygon) from parsed annotation."""
     points_data = anno.get("points", [])
     if len(points_data) < 3:
@@ -259,12 +257,12 @@ def _create_polygon(
 
 
 def _create_obb(
-    anno: Dict,
-    class_names: List[str],
+    anno: dict,
+    class_names: list[str],
     image_width: int,
     image_height: int,
     split: str,
-) -> Optional[fo.Polyline]:
+) -> fo.Polyline | None:
     """Create a FiftyOne Polyline (OBB) from parsed annotation."""
     points_data = anno.get("points", [])
     if len(points_data) != 4:

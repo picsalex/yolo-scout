@@ -1,13 +1,13 @@
 """Tests for src.dataset.parser module."""
 
+from yolo_scout.core.enums import DatasetTask
 from yolo_scout.dataset.parser import (
-    parse_yolo_annotation,
     _parse_detection_line,
+    _parse_obb_line,
     _parse_pose_line,
     _parse_segmentation_line,
-    _parse_obb_line,
+    parse_yolo_annotation,
 )
-from yolo_scout.core.enums import DatasetTask
 
 
 class TestParseDetectionLine:
