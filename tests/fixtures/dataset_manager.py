@@ -94,8 +94,8 @@ def download_and_extract_datasets(force: bool = False) -> Path:
         try:
             urlretrieve(DATASETS_URL, zip_path)
             print(f"✓ Downloaded datasets.zip ({zip_path.stat().st_size / 1024 / 1024:.1f} MB)")
-        except Exception as e:
-            raise RuntimeError(f"Failed to download datasets.zip: {e}")
+        except OSError as e:
+            raise RuntimeError(f"Failed to download datasets.zip: {e}") from e
 
     # Verify checksum if configured
     if EXPECTED_SHA256 is not None:
@@ -153,13 +153,14 @@ def download_and_extract_datasets(force: bool = False) -> Path:
 
         print(f"✓ Extracted {len(extracted_datasets)} datasets to {DATASETS_DIR}")
 
-        if len(extracted_datasets) != len(DATASET_PATHS):
-            raise RuntimeError(f"Expected {len(DATASET_PATHS)} datasets but found {len(extracted_datasets)}")
-
-    except Exception as e:
+    except (OSError, zipfile.BadZipFile) as e:
         if DATASETS_DIR.exists():
             shutil.rmtree(DATASETS_DIR)
-        raise RuntimeError(f"Failed to extract datasets.zip: {e}")
+        raise RuntimeError(f"Failed to extract datasets.zip: {e}") from e
+
+    if len(extracted_datasets) != len(DATASET_PATHS):
+        shutil.rmtree(DATASETS_DIR)
+        raise RuntimeError(f"Expected {len(DATASET_PATHS)} datasets but found {len(extracted_datasets)}")
 
     return DATASETS_DIR
 

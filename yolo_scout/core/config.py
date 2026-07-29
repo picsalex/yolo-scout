@@ -76,8 +76,8 @@ def _load_defaults() -> dict[str, Any]:
     try:
         with files("yolo_scout").joinpath("cfg/default.yaml").open("r", encoding="utf-8") as f:
             return yaml.safe_load(f)
-    except Exception as e:
-        logger.error(f"Default configuration file not found: {e}")
+    except (OSError, yaml.YAMLError) as e:
+        logger.error(f"Failed to load default configuration file: {e}")
         sys.exit(1)
 
 
@@ -198,7 +198,7 @@ def _build_config_dict(args: dict[str, Any]) -> dict[str, Any]:
         config["data"] = resolve_data_path(
             config["data"], config["dataset_dir"], force=_to_bool(config.get("reload", False))
         )
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         logger.error(str(e))
         sys.exit(1)
     if not os.path.exists(config["data"]):

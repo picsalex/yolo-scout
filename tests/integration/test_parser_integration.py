@@ -152,16 +152,10 @@ class TestParseRealAnnotations:
         labels_dir = detect_dataset / "labels" / "train"
         label_files = list(labels_dir.glob("*.txt"))
 
-        errors = []
         for label_file in label_files:
-            try:
-                annotations = parse_yolo_annotation(str(label_file), DatasetTask.DETECTION)
-                # Should either return list or None, not raise exception
-                assert annotations is None or isinstance(annotations, list)
-            except Exception as e:
-                errors.append((label_file.name, str(e)))
-
-        assert len(errors) == 0, f"Failed to parse {len(errors)} files: {errors[:5]}"
+            annotations = parse_yolo_annotation(str(label_file), DatasetTask.DETECTION)
+            # Should either return list or None, not raise exception
+            assert annotations is None or isinstance(annotations, list), label_file.name
 
 
 @pytest.mark.requires_dataset

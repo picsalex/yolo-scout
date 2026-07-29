@@ -1,6 +1,7 @@
 """Convert YOLO annotations to FiftyOne labels."""
 
 import fiftyone as fo
+from shapely.errors import ShapelyError
 from shapely.geometry import Polygon
 
 from yolo_scout.core.enums import DatasetTask
@@ -246,7 +247,7 @@ def _create_polygon(
         poly_points = points_pixels[:-1] if points_pixels[0] == points_pixels[-1] else points_pixels
         polygon["area"] = int(Polygon(poly_points).area)
 
-    except Exception:
+    except (ValueError, ShapelyError):
         polygon["area"] = 0
 
     polygon["num_keypoints"] = len(points)
@@ -298,7 +299,7 @@ def _create_obb(
         poly_points = points_pixels[:-1] if points_pixels[0] == points_pixels[-1] else points_pixels
         obb["area"] = int(Polygon(poly_points).area)
 
-    except Exception:
+    except (ValueError, ShapelyError):
         obb["area"] = 0
 
     # Calculate width and height from first two points

@@ -107,7 +107,7 @@ def _load_class_names(dataset_path: str, dataset_task: DatasetTask) -> list[str]
                     if os.path.isdir(class_dir):
                         class_names.add(class_name)
 
-        return sorted(list(class_names))
+        return sorted(class_names)
 
     else:
         for yaml_name in ["data.yaml", "dataset.yaml"]:
@@ -272,7 +272,8 @@ def _create_sample(
 
         return sample
 
-    except Exception as e:
+    # Broad by design: a single malformed image or label must not abort the whole load
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Failed to process {img_file}: {e}")
         return None
 
@@ -304,18 +305,14 @@ def _get_object_count(labels: fo.Label | None) -> int:
     if labels is None:
         return 0
 
-    try:
-        if hasattr(labels, "detections"):
-            return len(labels.detections) if labels.detections else 0
-        elif hasattr(labels, "polylines"):
-            return len(labels.polylines) if labels.polylines else 0
-        elif hasattr(labels, "keypoints"):
-            return len(labels.keypoints) if labels.keypoints else 0
-        elif hasattr(labels, "label"):
-            return 1 if labels.label else 0
-
-    except Exception:
-        pass
+    if hasattr(labels, "detections"):
+        return len(labels.detections) if labels.detections else 0
+    elif hasattr(labels, "polylines"):
+        return len(labels.polylines) if labels.polylines else 0
+    elif hasattr(labels, "keypoints"):
+        return len(labels.keypoints) if labels.keypoints else 0
+    elif hasattr(labels, "label"):
+        return 1 if labels.label else 0
 
     return 0
 
@@ -363,7 +360,7 @@ def _process_classification_split(
 
                 samples.append(sample)
 
-            except Exception as e:
+            except OSError as e:
                 logger.warning(f"Failed to process {image_path}: {e}")
                 continue
 

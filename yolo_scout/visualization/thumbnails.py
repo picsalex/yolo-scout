@@ -84,5 +84,5 @@ def delete_thumbnails(dataset_name: str, thumbnail_dir: str) -> None:
         try:
             shutil.rmtree(thumbnail_path)
             logger.info(f"Deleted thumbnails directory: {thumbnail_path}")
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Failed to delete thumbnails directory {thumbnail_path}: {e}")

@@ -212,7 +212,7 @@ def create_masked_crop_for_polyline(
 
 
 def process_sample_patches(
-    sample_data: tuple[str, str, str, list, DatasetTask],
+    sample_data: tuple[str, str, list, DatasetTask],
     background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
 ) -> tuple[str, list[np.ndarray]]:
@@ -221,14 +221,14 @@ def process_sample_patches(
     This function is designed to be called by worker processes.
 
     Args:
-        sample_data: Tuple of (sample_id, filepath, patches_field, patches_list, task)
+        sample_data: Tuple of (sample_id, filepath, patches_list, task)
         background_color: Background color for masking (segment/obb only)
         mask_background: Whether to mask the background for segment/obb tasks (default: True)
 
     Returns:
         Tuple of (sample_id, list_of_crops)
     """
-    sample_id, filepath, patches_field, patches_list, task = sample_data
+    sample_id, filepath, patches_list, task = sample_data
 
     try:
         # Load image once
@@ -264,7 +264,8 @@ def process_sample_patches(
 
         return sample_id, crops
 
-    except Exception as e:
+    # Broad by design: runs in worker processes, one bad sample must not kill the pool
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Failed to process sample {filepath}: {e}")
         return sample_id, []
 
@@ -309,7 +310,7 @@ def extract_all_patch_crops(
         if not patches_list:
             continue
 
-        sample_data_list.append((sample.id, sample.filepath, patches_field, patches_list, dataset_task))
+        sample_data_list.append((sample.id, sample.filepath, patches_list, dataset_task))
 
     if not sample_data_list:
         logger.warning("No patches found in dataset")

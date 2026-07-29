@@ -47,7 +47,7 @@ def parse_yolo_annotation(
 
             return annotations if annotations else None
 
-    except Exception as e:
+    except (OSError, ValueError, IndexError) as e:
         logger.warning(f"Failed to parse annotations from {label_path}: {e}")
         return None
 
