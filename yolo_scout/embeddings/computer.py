@@ -7,7 +7,6 @@ from typing import Dict, List
 import fiftyone as fo
 import fiftyone.brain as fob
 import fiftyone.zoo as foz
-import numba
 import numpy as np
 import torch
 from PIL import Image
@@ -23,18 +22,10 @@ from yolo_scout.core.enums import DatasetTask
 from yolo_scout.embeddings.preprocessing import iter_patch_crops
 from yolo_scout.utils.logger import logger
 
-# FiftyOne defaults its image-embeddings DataLoader to cpu_count() // 2 workers,
-# each opening its own connection to the local embedded mongod. On high-core-count
-# machines that can spawn 70+ workers and overwhelm mongod. Cap it instead.
+# Caps FiftyOne's per-worker mongod connections to avoid overwhelming it.
 MAX_IMAGE_EMBEDDING_WORKERS = 8
 
-# Patch embeddings run model inference in the same process as the crop-extraction
-# multiprocessing.Pool (cpu_count() - 1 workers). Both PyTorch (intra-op) and numba
-# (used internally by UMAP/pynndescent for the image-embeddings visualization step)
-# default to using every CPU core for their own thread pools, and numba's pool stays
-# resident for the rest of the process once initialized - it keeps fighting the
-# crop-extraction pool for cores throughout patch-embedding computation, long after
-# the image-embeddings UMAP call that first spun it up has returned. Cap both.
+# Keeps PyTorch's own thread pool from competing with the crop-extraction pool.
 CPU_INTRAOP_THREADS = 4
 
 
@@ -56,7 +47,6 @@ def compute_embeddings(
         mask_background: Whether to mask background in patch crops for segment/obb tasks
     """
     torch.set_num_threads(CPU_INTRAOP_THREADS)
-    numba.set_num_threads(CPU_INTRAOP_THREADS)
 
     # Load embeddings model
     try:
@@ -162,8 +152,6 @@ def _compute_patch_embeddings(
             mask = sample_id_buffer_array == sample_id
             per_sample_embeddings[sample_id].append(batch_embeds[mask])
 
-    # Stream crops and embed them in bounded-size batches, so at most
-    # `batch_size` crops are held in memory at once regardless of dataset size
     crop_stream = iter_patch_crops(
         dataset=dataset,
         patches_field=patches_field,
