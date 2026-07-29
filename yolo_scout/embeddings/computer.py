@@ -7,6 +7,7 @@ from typing import Dict, List
 import fiftyone as fo
 import fiftyone.brain as fob
 import fiftyone.zoo as foz
+import numba
 import numpy as np
 import torch
 from PIL import Image
@@ -28,10 +29,13 @@ from yolo_scout.utils.logger import logger
 MAX_IMAGE_EMBEDDING_WORKERS = 8
 
 # Patch embeddings run model inference in the same process as the crop-extraction
-# multiprocessing.Pool (cpu_count() - 1 workers). PyTorch defaults to using every
-# CPU core for its own intra-op threading, which fights the pool for the same
-# cores on high-core-count machines. Cap it so extraction keeps the headroom.
-TORCH_INTRAOP_THREADS = 4
+# multiprocessing.Pool (cpu_count() - 1 workers). Both PyTorch (intra-op) and numba
+# (used internally by UMAP/pynndescent for the image-embeddings visualization step)
+# default to using every CPU core for their own thread pools, and numba's pool stays
+# resident for the rest of the process once initialized - it keeps fighting the
+# crop-extraction pool for cores throughout patch-embedding computation, long after
+# the image-embeddings UMAP call that first spun it up has returned. Cap both.
+CPU_INTRAOP_THREADS = 4
 
 
 def compute_embeddings(
@@ -51,7 +55,8 @@ def compute_embeddings(
         batch_size: Batch size for processing
         mask_background: Whether to mask background in patch crops for segment/obb tasks
     """
-    torch.set_num_threads(TORCH_INTRAOP_THREADS)
+    torch.set_num_threads(CPU_INTRAOP_THREADS)
+    numba.set_num_threads(CPU_INTRAOP_THREADS)
 
     # Load embeddings model
     try:
