@@ -1,6 +1,7 @@
 """Tests for src.core.enums module."""
 
 import pytest
+
 from yolo_scout.core.enums import DatasetTask, EmbeddingsModel
 
 

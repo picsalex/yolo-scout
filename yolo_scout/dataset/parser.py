@@ -1,7 +1,6 @@
 """Parse YOLO annotation files."""
 
 import os
-from typing import Dict, List, Optional
 
 from yolo_scout.core.enums import DatasetTask
 from yolo_scout.utils.logger import logger
@@ -10,7 +9,7 @@ from yolo_scout.utils.logger import logger
 def parse_yolo_annotation(
     label_path: str,
     task: DatasetTask,
-) -> Optional[List[Dict]]:
+) -> list[dict] | None:
     """
     Parse a YOLO annotation file into a list of annotation dictionaries.
 
@@ -48,12 +47,12 @@ def parse_yolo_annotation(
 
             return annotations if annotations else None
 
-    except Exception as e:
+    except (OSError, ValueError, IndexError) as e:
         logger.warning(f"Failed to parse annotations from {label_path}: {e}")
         return None
 
 
-def _parse_detection_line(line: str) -> Optional[Dict]:
+def _parse_detection_line(line: str) -> dict | None:
     """
     Parse a detection annotation line.
     Format: class_id x_center y_center width height
@@ -71,7 +70,7 @@ def _parse_detection_line(line: str) -> Optional[Dict]:
     }
 
 
-def _parse_pose_line(line: str) -> Optional[Dict]:
+def _parse_pose_line(line: str) -> dict | None:
     """
     Parse a pose annotation line.
     Format: class_id x_center y_center width height x1 y1 v1 x2 y2 v2 ...
@@ -102,7 +101,7 @@ def _parse_pose_line(line: str) -> Optional[Dict]:
     return anno
 
 
-def _parse_segmentation_line(line: str) -> Optional[Dict]:
+def _parse_segmentation_line(line: str) -> dict | None:
     """
     Parse a segmentation annotation line.
     Format: class_id x1 y1 x2 y2 x3 y3 ...
@@ -128,7 +127,7 @@ def _parse_segmentation_line(line: str) -> Optional[Dict]:
     }
 
 
-def _parse_obb_line(line: str) -> Optional[Dict]:
+def _parse_obb_line(line: str) -> dict | None:
     """
     Parse an OBB (Oriented Bounding Box) annotation line.
     Format: class_id x1 y1 x2 y2 x3 y3 x4 y4

@@ -1,7 +1,5 @@
 """Compute embeddings for images and patches."""
 
-from typing import Dict
-
 import fiftyone as fo
 import fiftyone.brain as fob
 import fiftyone.zoo as foz
@@ -22,7 +20,7 @@ from yolo_scout.utils.logger import logger
 def compute_embeddings(
     dataset: fo.Dataset,
     dataset_task: DatasetTask,
-    model_kwargs: Dict,
+    model_kwargs: dict,
     batch_size: int,
     mask_background: bool = True,
 ) -> None:
@@ -105,7 +103,7 @@ def _compute_patch_embeddings(
     dataset_task: DatasetTask,
     batch_size: int,
     mask_background: bool = True,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Compute embeddings for all patches with optional background masking.
 
