@@ -1,8 +1,5 @@
 """Compute image quality metrics for FiftyOne datasets."""
 
-from functools import partial
-from multiprocessing import Pool, cpu_count
-
 import cv2
 import fiftyone as fo
 import numpy as np
@@ -10,7 +7,7 @@ from tqdm import tqdm
 
 from yolo_scout.core.constants import DETECTION_FIELD, get_field_name
 from yolo_scout.core.enums import DatasetTask
-from yolo_scout.embeddings.preprocessing import process_sample_patches
+from yolo_scout.embeddings.preprocessing import iter_patch_crops
 from yolo_scout.utils.logger import logger
 
 
@@ -85,28 +82,14 @@ def compute_quality_metrics(
             return []
         return (obj.detections if is_detection_like else obj.polylines) or []
 
-    sample_data_list = [
-        (s.id, s.filepath, patches_field, get_patches(s), dataset_task)
-        for s in dataset.select_fields([patches_field, "filepath"])
-        if get_patches(s)
-    ]
+    crop_stream = iter_patch_crops(
+        dataset=dataset,
+        patches_field=patches_field,
+        dataset_task=dataset_task,
+        mask_background=mask_background,
+    )
 
-    if not sample_data_list:
-        return
-
-    with Pool(processes=max(1, cpu_count() - 1)) as pool:
-        results = list(
-            tqdm(
-                pool.imap(
-                    partial(process_sample_patches, mask_background=mask_background),
-                    sample_data_list,
-                ),
-                total=len(sample_data_list),
-                desc="Patch metrics",
-            )
-        )
-
-    for (sample_id, *_), (_, crops) in zip(sample_data_list, results):
+    for sample_id, crops in tqdm(crop_stream, desc="Patch metrics"):
         sample = dataset[sample_id]
         patches = get_patches(sample)
         for patch, crop in zip(patches, crops):

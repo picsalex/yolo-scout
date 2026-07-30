@@ -7,7 +7,6 @@ from multiprocessing import Pool, cpu_count
 import cv2
 import fiftyone as fo
 import numpy as np
-from PIL import Image
 from tqdm import tqdm
 
 from yolo_scout.core.enums import DatasetTask
@@ -276,7 +275,7 @@ def iter_patch_crops(
     dataset_task: DatasetTask,
     background_color: Tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> Iterator[Tuple[str, List[Image.Image]]]:
+) -> Iterator[Tuple[str, List[np.ndarray]]]:
     """
     Stream patch crops from a dataset with multiprocessing, one sample at a time.
 
@@ -333,4 +332,4 @@ def iter_patch_crops(
             desc="Extracting crops",
         ):
             if crops:
-                yield sample_id, [Image.fromarray(crop) for crop in crops]
+                yield sample_id, crops

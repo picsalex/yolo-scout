@@ -178,7 +178,7 @@ def _compute_patch_embeddings(
 
     for sample_id, crops in tqdm(crop_stream, desc="Computing embeddings"):
         total_crops += len(crops)
-        crop_buffer.extend(crops)
+        crop_buffer.extend(Image.fromarray(crop) for crop in crops)
         sample_id_buffer.extend([sample_id] * len(crops))
 
         while len(crop_buffer) >= batch_size:
