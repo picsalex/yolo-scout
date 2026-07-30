@@ -6,9 +6,11 @@ from typing import Dict, List
 
 import fiftyone as fo
 import fiftyone.brain as fob
+import fiftyone.brain.internal.core.utils as fbu
 import fiftyone.zoo as foz
 import numpy as np
 import torch
+import umap
 from PIL import Image
 from tqdm import tqdm
 
@@ -94,14 +96,28 @@ def compute_embeddings(
                 mask_background=mask_background,
             )
 
-            # Pass pre-computed embeddings to FiftyOne
+            # FiftyOne's own UMAP call defaults to init="spectral", which segfaults via
+            # ARPACK at millions of points. Run UMAP ourselves with init="pca" instead.
+            embeddings, _, label_ids = fbu.get_embeddings(
+                dataset, patches_field=patches_field, embeddings=patch_embeddings
+            )
+            points = umap.UMAP(
+                n_components=2,
+                n_neighbors=15,
+                metric="euclidean",
+                min_dist=0.1,
+                random_state=0,
+                init="pca",
+                low_memory=True,
+                verbose=True,
+            ).fit_transform(embeddings)
+
             fob.compute_visualization(
                 dataset,
                 patches_field=patches_field,
-                embeddings=patch_embeddings,
-                method="umap",
+                points=dict(zip(label_ids, points)),
+                method="manual",
                 brain_key=PATCH_EMBEDDINGS_KEY,
-                seed=0,
             )
 
             logger.info("Patch embeddings and visualization computed successfully")
