@@ -211,6 +211,12 @@ def create_masked_crop_for_polyline(
     return cropped_image
 
 
+def _limit_worker_cv2_threads() -> None:
+    # OpenCV defaults to using every core for its own internal ops; with cpu_count() - 1
+    # worker processes each doing that too, it oversubscribes the same cores.
+    cv2.setNumThreads(1)
+
+
 def process_sample_patches(
     sample_data: Tuple[str, str, str, List, DatasetTask],
     background_color: Tuple[int, int, int] = (114, 114, 114),
@@ -325,7 +331,7 @@ def iter_patch_crops(
         mask_background=mask_background,
     )
 
-    with Pool(processes=max(1, cpu_count() - 1)) as pool:
+    with Pool(processes=max(1, cpu_count() - 1), initializer=_limit_worker_cv2_threads) as pool:
         for sample_id, crops in tqdm(
             pool.imap(process_func, sample_data_list),
             total=len(sample_data_list),

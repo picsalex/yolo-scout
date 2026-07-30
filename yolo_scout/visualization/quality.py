@@ -53,6 +53,7 @@ def compute_quality_metrics(
     mask_background: bool,
 ) -> None:
     """Compute quality metrics for images and patches."""
+    cv2.setNumThreads(1)
     logger.info("Computing quality metrics...")
 
     # Image-level
