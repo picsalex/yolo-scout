@@ -2,7 +2,6 @@
 
 import os
 from collections import defaultdict
-from typing import Dict, List
 
 import fiftyone as fo
 import fiftyone.brain as fob
@@ -148,9 +147,9 @@ def _compute_patch_embeddings(
     Returns:
         Dict mapping sample_id -> (num_patches, embedding_dim) numpy array
     """
-    per_sample_embeddings: Dict[str, List[np.ndarray]] = defaultdict(list)
-    crop_buffer: List[Image.Image] = []
-    sample_id_buffer: List[str] = []
+    per_sample_embeddings: dict[str, list[np.ndarray]] = defaultdict(list)
+    crop_buffer: list[Image.Image] = []
+    sample_id_buffer: list[str] = []
     total_crops = 0
 
     def _embed_buffer() -> None:

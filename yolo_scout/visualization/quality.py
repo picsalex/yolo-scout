@@ -1,7 +1,5 @@
 """Compute image quality metrics for FiftyOne datasets."""
 
-from typing import Dict, List, Tuple
-
 import cv2
 import fiftyone as fo
 import numpy as np
@@ -50,10 +48,10 @@ def _entropy(gray: np.ndarray) -> float:
 
 
 def _compute_patch_metrics(
-    sample_data: Tuple[str, str, str, List, DatasetTask],
-    background_color: Tuple[int, int, int] = (114, 114, 114),
+    sample_data: tuple[str, str, str, list, DatasetTask],
+    background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> Tuple[str, List[Dict[str, float]]]:
+) -> tuple[str, list[dict[str, float]]]:
     """Extract crops and compute their quality metrics inside a worker process."""
     sample_id, crops = process_sample_patches(
         sample_data, background_color=background_color, mask_background=mask_background

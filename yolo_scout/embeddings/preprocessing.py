@@ -1,6 +1,6 @@
 """Image preprocessing for embeddings computation."""
 
-from typing import Iterator, List, Tuple
+from collections.abc import Iterator
 from functools import partial
 from multiprocessing import Pool, cpu_count
 
@@ -282,7 +282,7 @@ def iter_patch_crops(
     background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
     worker_func=process_sample_patches,
-) -> Iterator[Tuple[str, List]]:
+) -> Iterator[tuple[str, list]]:
     """
     Stream per-sample worker results from a dataset with multiprocessing, one sample at a time.
 
