@@ -281,12 +281,15 @@ def iter_patch_crops(
     dataset_task: DatasetTask,
     background_color: Tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> Iterator[Tuple[str, List[np.ndarray]]]:
+    worker_func=process_sample_patches,
+) -> Iterator[Tuple[str, List]]:
     """
-    Stream patch crops from a dataset with multiprocessing, one sample at a time.
+    Stream per-sample worker results from a dataset with multiprocessing, one sample at a time.
 
-    Yields incrementally instead of materializing every crop in memory at once,
-    so callers can embed-and-discard crops in bounded-size batches.
+    Yields incrementally instead of materializing every crop in memory at once, so callers
+    can process-and-discard results in bounded-size batches. `worker_func` runs inside the
+    worker processes alongside crop extraction (default: returns the raw crops themselves;
+    pass a different worker to also compute per-crop results there instead of afterward).
 
     Args:
         dataset: FiftyOne dataset
@@ -294,9 +297,10 @@ def iter_patch_crops(
         dataset_task: Dataset task type
         background_color: RGB background color for masking (segment/obb only)
         mask_background: Whether to mask the background for segment/obb tasks (default: True)
+        worker_func: Called per sample as (sample_data, background_color=..., mask_background=...)
 
     Yields:
-        Tuple of (sample_id, list_of_crops) for each sample that has patches
+        Tuple of (sample_id, list_of_results) for each sample that has patches
     """
     # Prepare sample data for workers
     sample_data_list = []
@@ -326,16 +330,16 @@ def iter_patch_crops(
 
     # Extract crops with multiprocessing, streaming results as they complete
     process_func = partial(
-        process_sample_patches,
+        worker_func,
         background_color=background_color,
         mask_background=mask_background,
     )
 
     with Pool(processes=max(1, cpu_count() - 1), initializer=_limit_worker_cv2_threads) as pool:
-        for sample_id, crops in tqdm(
+        for sample_id, results in tqdm(
             pool.imap(process_func, sample_data_list),
             total=len(sample_data_list),
             desc="Extracting crops",
         ):
-            if crops:
-                yield sample_id, crops
+            if results:
+                yield sample_id, results

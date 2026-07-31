@@ -1,5 +1,7 @@
 """Compute image quality metrics for FiftyOne datasets."""
 
+from typing import Dict, List, Tuple
+
 import cv2
 import fiftyone as fo
 import numpy as np
@@ -7,7 +9,7 @@ from tqdm import tqdm
 
 from yolo_scout.core.constants import DETECTION_FIELD, get_field_name
 from yolo_scout.core.enums import DatasetTask
-from yolo_scout.embeddings.preprocessing import iter_patch_crops
+from yolo_scout.embeddings.preprocessing import iter_patch_crops, process_sample_patches
 from yolo_scout.utils.logger import logger
 
 
@@ -47,6 +49,29 @@ def _entropy(gray: np.ndarray) -> float:
     return float(-np.sum(non_zero * np.log2(non_zero)))
 
 
+def _compute_patch_metrics(
+    sample_data: Tuple[str, str, str, List, DatasetTask],
+    background_color: Tuple[int, int, int] = (114, 114, 114),
+    mask_background: bool = True,
+) -> Tuple[str, List[Dict[str, float]]]:
+    """Extract crops and compute their quality metrics inside a worker process."""
+    sample_id, crops = process_sample_patches(
+        sample_data, background_color=background_color, mask_background=mask_background
+    )
+    metrics = []
+    for crop in crops:
+        gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+        metrics.append(
+            {
+                "blurriness": _blurriness(gray),
+                "brightness": _brightness(gray),
+                "aspect_ratio": _aspect_ratio(gray),
+                "entropy": _entropy(gray),
+            }
+        )
+    return sample_id, metrics
+
+
 def compute_quality_metrics(
     dataset: fo.Dataset,
     dataset_task: DatasetTask,
@@ -83,22 +108,22 @@ def compute_quality_metrics(
             return []
         return (obj.detections if is_detection_like else obj.polylines) or []
 
-    crop_stream = iter_patch_crops(
+    metrics_stream = iter_patch_crops(
         dataset=dataset,
         patches_field=patches_field,
         dataset_task=dataset_task,
         mask_background=mask_background,
+        worker_func=_compute_patch_metrics,
     )
 
-    for sample_id, crops in tqdm(crop_stream, desc="Patch metrics"):
+    for sample_id, metrics_list in tqdm(metrics_stream, desc="Patch metrics"):
         sample = dataset[sample_id]
         patches = get_patches(sample)
-        for patch, crop in zip(patches, crops):
-            patch_gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
-            patch["blurriness"] = _blurriness(patch_gray)
-            patch["brightness"] = _brightness(patch_gray)
-            patch["aspect_ratio"] = _aspect_ratio(patch_gray)
-            patch["entropy"] = _entropy(patch_gray)
+        for patch, metrics in zip(patches, metrics_list):
+            patch["blurriness"] = metrics["blurriness"]
+            patch["brightness"] = metrics["brightness"]
+            patch["aspect_ratio"] = metrics["aspect_ratio"]
+            patch["entropy"] = metrics["entropy"]
         sample.save()
 
     logger.info("Quality metrics computed successfully")
