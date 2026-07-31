@@ -48,7 +48,7 @@ def _entropy(gray: np.ndarray) -> float:
 
 
 def _compute_patch_metrics(
-    sample_data: tuple[str, str, str, list, DatasetTask],
+    sample_data: tuple[str, str, list, DatasetTask],
     background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
 ) -> tuple[str, list[dict[str, float]]]:
