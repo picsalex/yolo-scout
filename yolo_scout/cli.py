@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 YoloScout — YOLO Dataset Quality Analysis Tool
 CLI entry point
@@ -21,14 +20,14 @@ def main():
     configure_external_loggers()
 
     from yolo_scout.pipeline.steps import (
-        validate,
-        prepare_run,
         prepare_plugins,
-        run_load_dataset,
+        prepare_run,
         run_embeddings,
+        run_launch,
+        run_load_dataset,
         run_quality_metrics,
         run_thumbnails,
-        run_launch,
+        validate,
     )
 
     logger.info("=" * 60)

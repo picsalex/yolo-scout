@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Backwards-compatible entry point. Use `yolo-scout` CLI instead."""
 
 from yolo_scout.cli import main

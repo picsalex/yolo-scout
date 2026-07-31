@@ -1,8 +1,8 @@
 """Compute IoU scores for overlapping annotations."""
 
-from shapely.geometry import Polygon, box
-
 import fiftyone as fo
+from shapely.errors import ShapelyError
+from shapely.geometry import Polygon, box
 
 from yolo_scout.core.enums import DatasetTask
 from yolo_scout.utils.logger import logger
@@ -36,7 +36,7 @@ def compute_iou_scores(labels: fo.Label, dataset_task: DatasetTask) -> None:
 
             _compute_polygon_ious(objects)
 
-    except Exception as e:
+    except (AttributeError, TypeError, ValueError, ShapelyError) as e:
         logger.warning(f"Failed to compute IoU scores: {e}")
 
 
@@ -114,7 +114,7 @@ def _compute_polygon_ious(objects):
                 iou_matrix[i][j] = iou
                 iou_matrix[j][i] = iou
 
-            except Exception:
+            except (ValueError, ShapelyError):
                 # Skip invalid polygons
                 continue
 

@@ -1,7 +1,7 @@
 """Integration tests for dataset loading pipeline."""
 
-import pytest
 import fiftyone as fo
+import pytest
 
 from yolo_scout.core.config import Config
 from yolo_scout.core.enums import DatasetTask, EmbeddingsModel

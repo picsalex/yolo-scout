@@ -34,7 +34,7 @@ CPU_INTRAOP_THREADS = 4
 def compute_embeddings(
     dataset: fo.Dataset,
     dataset_task: DatasetTask,
-    model_kwargs: Dict,
+    model_kwargs: dict,
     batch_size: int,
     mask_background: bool = True,
 ) -> None:
@@ -133,7 +133,7 @@ def _compute_patch_embeddings(
     dataset_task: DatasetTask,
     batch_size: int,
     mask_background: bool = True,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Compute embeddings for all patches with optional background masking.
 

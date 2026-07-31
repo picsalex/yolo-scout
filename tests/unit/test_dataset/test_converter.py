@@ -1,12 +1,14 @@
 """Tests for src.dataset.converter module."""
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
+
 from yolo_scout.dataset.converter import (
     _create_detection,
     _create_keypoint,
-    _create_polygon,
     _create_obb,
+    _create_polygon,
     create_detection_from_keypoint,
 )
 

@@ -94,7 +94,7 @@ class UltralyticsResolver(DatasetResolver):
         from yolo_scout.utils.logger import logger
 
         ndjson_path = dest / f"{slug}.ndjson"
-        urllib.request.urlretrieve(ndjson_url, ndjson_path)  # noqa: S310
+        urllib.request.urlretrieve(ndjson_url, ndjson_path)
         logger.info(f"Retrieved '{slug}.ndjson', processing and downloading images")
         _ndjson_to_yolo(ndjson_path, dest)
         ndjson_path.unlink()
@@ -158,7 +158,7 @@ def _ndjson_to_yolo(ndjson_path: Path, dest: Path) -> None:
             img_path = dest / "images" / split / filename
 
         img_path.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(record["url"], img_path)  # noqa: S310
+        urllib.request.urlretrieve(record["url"], img_path)
 
         if task != "classify":
             label_lines = [" ".join(str(v) for v in row) for key in _LABEL_KEYS for row in annotations.get(key, [])]

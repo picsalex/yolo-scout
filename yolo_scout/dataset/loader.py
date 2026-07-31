@@ -2,13 +2,12 @@
 
 import os
 from dataclasses import dataclass
-from typing import List, Optional
 
 import fiftyone as fo
 import yaml
 from tqdm import tqdm
-from yolo_scout.core.config import Config
 
+from yolo_scout.core.config import Config
 from yolo_scout.core.constants import (
     DATASET_SPLITS,
     DETECTION_FIELD,
@@ -22,9 +21,9 @@ from yolo_scout.dataset.converter import (
     yolo_to_fiftyone,
 )
 from yolo_scout.dataset.metadata import extract_image_metadata
-from yolo_scout.utils.path_utils import get_image_name
 from yolo_scout.dataset.parser import parse_yolo_annotation
 from yolo_scout.utils.logger import logger
+from yolo_scout.utils.path_utils import get_image_name
 from yolo_scout.visualization.iou import compute_iou_scores
 
 
@@ -34,7 +33,7 @@ class SplitInfo:
 
     name: str
     images_dir: str
-    labels_dir: Optional[str]
+    labels_dir: str | None
 
 
 def load_yolo_dataset(config: Config) -> fo.Dataset:
@@ -95,7 +94,7 @@ def load_yolo_dataset(config: Config) -> fo.Dataset:
     return dataset
 
 
-def _load_class_names(dataset_path: str, dataset_task: DatasetTask) -> List[str]:
+def _load_class_names(dataset_path: str, dataset_task: DatasetTask) -> list[str]:
     """Load class names from data.yaml or dataset.yaml."""
     if dataset_task == DatasetTask.CLASSIFICATION:
         # Browse subdirectories in train/val/test for class names
@@ -108,7 +107,7 @@ def _load_class_names(dataset_path: str, dataset_task: DatasetTask) -> List[str]
                     if os.path.isdir(class_dir):
                         class_names.add(class_name)
 
-        return sorted(list(class_names))
+        return sorted(class_names)
 
     else:
         for yaml_name in ["data.yaml", "dataset.yaml"]:
@@ -130,7 +129,7 @@ def _load_class_names(dataset_path: str, dataset_task: DatasetTask) -> List[str]
     return []
 
 
-def _discover_splits(dataset_path: str) -> List[SplitInfo]:
+def _discover_splits(dataset_path: str) -> list[SplitInfo]:
     """Discover dataset splits in the directory structure."""
     splits = []
 
@@ -173,7 +172,7 @@ def _discover_splits(dataset_path: str) -> List[SplitInfo]:
     return splits
 
 
-def _discover_classification_splits(dataset_path: str) -> List[SplitInfo]:
+def _discover_classification_splits(dataset_path: str) -> list[SplitInfo]:
     """Discover classification dataset splits."""
     splits = []
 
@@ -188,7 +187,7 @@ def _discover_classification_splits(dataset_path: str) -> List[SplitInfo]:
 def _process_split(
     dataset: fo.Dataset,
     split: SplitInfo,
-    class_names: List[str],
+    class_names: list[str],
     task: DatasetTask,
 ) -> None:
     """Process a single dataset split."""
@@ -212,9 +211,9 @@ def _process_split(
 def _create_sample(
     img_file: str,
     split: SplitInfo,
-    class_names: List[str],
+    class_names: list[str],
     task: DatasetTask,
-) -> Optional[fo.Sample]:
+) -> fo.Sample | None:
     """Create a FiftyOne sample from an image file."""
     image_path = os.path.join(split.images_dir, img_file)
 
@@ -273,7 +272,8 @@ def _create_sample(
 
         return sample
 
-    except Exception as e:
+    # Broad by design: a single malformed image or label must not abort the whole load
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Failed to process {img_file}: {e}")
         return None
 
@@ -300,23 +300,19 @@ def _create_detections_from_keypoints(
     return fo.Detections(detections=detections)
 
 
-def _get_object_count(labels: Optional[fo.Label]) -> int:
+def _get_object_count(labels: fo.Label | None) -> int:
     """Get the number of objects from labels."""
     if labels is None:
         return 0
 
-    try:
-        if hasattr(labels, "detections"):
-            return len(labels.detections) if labels.detections else 0
-        elif hasattr(labels, "polylines"):
-            return len(labels.polylines) if labels.polylines else 0
-        elif hasattr(labels, "keypoints"):
-            return len(labels.keypoints) if labels.keypoints else 0
-        elif hasattr(labels, "label"):
-            return 1 if labels.label else 0
-
-    except Exception:
-        pass
+    if hasattr(labels, "detections"):
+        return len(labels.detections) if labels.detections else 0
+    elif hasattr(labels, "polylines"):
+        return len(labels.polylines) if labels.polylines else 0
+    elif hasattr(labels, "keypoints"):
+        return len(labels.keypoints) if labels.keypoints else 0
+    elif hasattr(labels, "label"):
+        return 1 if labels.label else 0
 
     return 0
 
@@ -364,7 +360,7 @@ def _process_classification_split(
 
                 samples.append(sample)
 
-            except Exception as e:
+            except OSError as e:
                 logger.warning(f"Failed to process {image_path}: {e}")
                 continue
 

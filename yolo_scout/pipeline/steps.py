@@ -25,8 +25,8 @@ def validate(verbose: bool = True) -> Config:
 @step(name="preparation")
 def prepare_run(config: Config) -> bool:
     """Determine cache state and clean up if needed. Returns recompute=True if pipeline should run."""
-    from yolo_scout.visualization.thumbnails import delete_thumbnails
     from yolo_scout.utils.logger import logger
+    from yolo_scout.visualization.thumbnails import delete_thumbnails
 
     if config.name not in fo.list_datasets():
         logger.info(f"No cache found for '{config.name}', running full pipeline")

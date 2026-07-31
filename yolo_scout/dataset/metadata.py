@@ -1,7 +1,6 @@
 """Extract metadata from images."""
 
 import os
-from typing import Tuple
 
 import fiftyone as fo
 from PIL import Image
@@ -37,7 +36,7 @@ def extract_image_metadata(filepath: str) -> fo.ImageMetadata:
         raise
 
 
-def get_dimensions(filepath: str) -> Tuple[int, int]:
+def get_dimensions(filepath: str) -> tuple[int, int]:
     """Get image dimensions (width, height)."""
     with Image.open(filepath) as img:
         return img.size
