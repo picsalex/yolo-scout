@@ -1,11 +1,9 @@
 """Compute embeddings for images and patches."""
 
 import os
-from collections import defaultdict
 
 import fiftyone as fo
 import fiftyone.brain as fob
-import fiftyone.brain.internal.core.utils as fbu
 import fiftyone.zoo as foz
 import numpy as np
 import torch
@@ -96,9 +94,8 @@ def compute_embeddings(
             )
 
             # FiftyOne's UMAP defaults to init="spectral", which segfaults via ARPACK at this scale.
-            embeddings, _, label_ids = fbu.get_embeddings(
-                dataset, patches_field=patches_field, embeddings=patch_embeddings
-            )
+            label_ids = list(patch_embeddings.keys())
+            embeddings = np.stack(list(patch_embeddings.values()))
             points = umap.UMAP(
                 n_components=2,
                 n_neighbors=15,
@@ -145,12 +142,12 @@ def _compute_patch_embeddings(
         mask_background: Whether to mask background for segment/obb tasks
 
     Returns:
-        Dict mapping sample_id -> (num_patches, embedding_dim) numpy array
+        Dict mapping patch_id -> embedding vector. Patches with invalid geometry are
+        absent entirely (no embedding is computed for them).
     """
-    per_sample_embeddings: dict[str, list[np.ndarray]] = defaultdict(list)
+    patch_embeddings: dict[str, np.ndarray] = {}
     crop_buffer: list[Image.Image] = []
-    sample_id_buffer: list[str] = []
-    total_crops = 0
+    patch_id_buffer: list[str] = []
 
     def _embed_buffer() -> None:
         batch_embeds = model.embed_all(crop_buffer)
@@ -161,10 +158,8 @@ def _compute_patch_embeddings(
         elif not isinstance(batch_embeds, np.ndarray):
             batch_embeds = np.array(batch_embeds)
 
-        sample_id_buffer_array = np.array(sample_id_buffer)
-        for sample_id in np.unique(sample_id_buffer_array):
-            mask = sample_id_buffer_array == sample_id
-            per_sample_embeddings[sample_id].append(batch_embeds[mask])
+        for patch_id, embedding in zip(patch_id_buffer, batch_embeds):
+            patch_embeddings[patch_id] = embedding
 
     crop_stream = iter_patch_crops(
         dataset=dataset,
@@ -174,26 +169,23 @@ def _compute_patch_embeddings(
         mask_background=mask_background,
     )
 
-    for sample_id, crops in tqdm(crop_stream, desc="Computing embeddings"):
-        total_crops += len(crops)
-        crop_buffer.extend(Image.fromarray(crop) for crop in crops)
-        sample_id_buffer.extend([sample_id] * len(crops))
+    for _, crops in tqdm(crop_stream, desc="Computing embeddings"):
+        crop_buffer.extend(Image.fromarray(crop) for _, crop in crops)
+        patch_id_buffer.extend(patch_id for patch_id, _ in crops)
 
         while len(crop_buffer) >= batch_size:
             crop_buffer, remainder = crop_buffer[:batch_size], crop_buffer[batch_size:]
-            sample_id_buffer, sample_id_remainder = sample_id_buffer[:batch_size], sample_id_buffer[batch_size:]
+            patch_id_buffer, patch_id_remainder = patch_id_buffer[:batch_size], patch_id_buffer[batch_size:]
             _embed_buffer()
-            crop_buffer, sample_id_buffer = remainder, sample_id_remainder
+            crop_buffer, patch_id_buffer = remainder, patch_id_remainder
 
     if crop_buffer:
         _embed_buffer()
 
-    if total_crops == 0:
+    if not patch_embeddings:
         logger.warning("No crops extracted from dataset")
         return {}
 
-    embeddings_dict = {sample_id: np.vstack(chunks) for sample_id, chunks in per_sample_embeddings.items()}
+    logger.info(f"Successfully computed embeddings for {len(patch_embeddings)} patches")
 
-    logger.info(f"Successfully computed embeddings for {total_crops} patches across {len(embeddings_dict)} samples")
-
-    return embeddings_dict
+    return patch_embeddings

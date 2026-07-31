@@ -220,9 +220,9 @@ def process_sample_patches(
     sample_data: tuple[str, str, list, DatasetTask],
     background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> tuple[str, list[np.ndarray]]:
+) -> tuple[str, list[tuple[str, np.ndarray]]]:
     """
-    Process a single sample to extract all patch crops.
+    Process a single sample to extract patch crops.
     This function is designed to be called by worker processes.
 
     Args:
@@ -231,7 +231,9 @@ def process_sample_patches(
         mask_background: Whether to mask the background for segment/obb tasks (default: True)
 
     Returns:
-        Tuple of (sample_id, list_of_crops)
+        Tuple of (sample_id, list_of_(patch_id, crop)). Patches with invalid geometry
+        (missing bounding_box or points) are excluded entirely, not placeholder-filled -
+        callers must match crops back to patches by patch_id, not by list position.
     """
     sample_id, filepath, patches_list, task = sample_data
 
@@ -243,36 +245,40 @@ def process_sample_patches(
 
         # Convert BGR to RGB
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        crops = []
-
-        # Process based on task type
-        if task in [DatasetTask.DETECTION, DatasetTask.POSE]:
-            # For detection/pose: just crop to bbox
-            for patch in patches_list:
-                bbox = patch.bounding_box
-                if bbox is None:
-                    continue
-
-                crop = create_crop_for_detection(image, bbox)
-                crops.append(crop)
-
-        elif task in [DatasetTask.SEGMENTATION, DatasetTask.OBB]:
-            # For segmentation/obb: optionally mask background and crop
-            for patch in patches_list:
-                if not patch.points or len(patch.points) == 0:
-                    continue
-
-                polyline_points = patch.points[0]
-                crop = create_masked_crop_for_polyline(image, polyline_points, background_color, mask_background)
-                crops.append(crop)
-
-        return sample_id, crops
-
     # Broad by design: runs in worker processes, one bad sample must not kill the pool
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"Failed to process sample {filepath}: {e}")
+        logger.warning(f"Failed to load image {filepath}: {e}")
         return sample_id, []
+
+    crops = []
+
+    # Process based on task type. Each patch is cropped independently so one malformed
+    # patch can't discard the rest of the sample's otherwise-valid crops.
+    if task in [DatasetTask.DETECTION, DatasetTask.POSE]:
+        # For detection/pose: just crop to bbox
+        for patch in patches_list:
+            if not patch.bounding_box:
+                continue
+            try:
+                crop = create_crop_for_detection(image, patch.bounding_box)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to crop patch {patch.id} in {filepath}: {e}")
+                continue
+            crops.append((patch.id, crop))
+
+    elif task in [DatasetTask.SEGMENTATION, DatasetTask.OBB]:
+        # For segmentation/obb: optionally mask background and crop
+        for patch in patches_list:
+            if not patch.points or len(patch.points) == 0:
+                continue
+            try:
+                crop = create_masked_crop_for_polyline(image, patch.points[0], background_color, mask_background)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to crop patch {patch.id} in {filepath}: {e}")
+                continue
+            crops.append((patch.id, crop))
+
+    return sample_id, crops
 
 
 def iter_patch_crops(

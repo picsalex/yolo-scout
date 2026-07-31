@@ -51,21 +51,24 @@ def _compute_patch_metrics(
     sample_data: tuple[str, str, list, DatasetTask],
     background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> tuple[str, list[dict[str, float]]]:
+) -> tuple[str, list[tuple[str, dict[str, float]]]]:
     """Extract crops and compute their quality metrics inside a worker process."""
     sample_id, crops = process_sample_patches(
         sample_data, background_color=background_color, mask_background=mask_background
     )
     metrics = []
-    for crop in crops:
+    for patch_id, crop in crops:
         gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
         metrics.append(
-            {
-                "blurriness": _blurriness(gray),
-                "brightness": _brightness(gray),
-                "aspect_ratio": _aspect_ratio(gray),
-                "entropy": _entropy(gray),
-            }
+            (
+                patch_id,
+                {
+                    "blurriness": _blurriness(gray),
+                    "brightness": _brightness(gray),
+                    "aspect_ratio": _aspect_ratio(gray),
+                    "entropy": _entropy(gray),
+                },
+            )
         )
     return sample_id, metrics
 
@@ -116,8 +119,11 @@ def compute_quality_metrics(
 
     for sample_id, metrics_list in tqdm(metrics_stream, desc="Patch metrics"):
         sample = dataset[sample_id]
-        patches = get_patches(sample)
-        for patch, metrics in zip(patches, metrics_list):
+        patches_by_id = {patch.id: patch for patch in get_patches(sample)}
+        for patch_id, metrics in metrics_list:
+            patch = patches_by_id.get(patch_id)
+            if patch is None:
+                continue
             patch["blurriness"] = metrics["blurriness"]
             patch["brightness"] = metrics["brightness"]
             patch["aspect_ratio"] = metrics["aspect_ratio"]

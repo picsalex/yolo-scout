@@ -8,6 +8,7 @@ from yolo_scout.core.constants import DETECTION_FIELD, IMAGE_EMBEDDINGS_KEY, PAT
 from yolo_scout.core.enums import DatasetTask, EmbeddingsModel
 from yolo_scout.dataset.loader import load_yolo_dataset
 from yolo_scout.embeddings.computer import compute_embeddings
+from yolo_scout.visualization.quality import compute_quality_metrics
 
 
 def _make_config(data: str, task: DatasetTask, name: str, tmp_path) -> Config:
@@ -277,14 +278,12 @@ class TestPatchEmbeddings:
 @pytest.mark.integration
 @pytest.mark.slow
 class TestPatchVisualizationCorrectness:
-    """Guards the manual UMAP points path against FiftyOne internal-API drift.
+    """Guards the manual UMAP points path against label mismatches.
 
     `compute_embeddings` bypasses FiftyOne's own UMAP call (its spectral init
-    segfaults at scale) and instead calls the unofficial
-    `fiftyone.brain.internal.core.utils.get_embeddings()` to get correctly-ordered
-    sample/label ids for the `points=` argument. If a future FiftyOne release
-    changes that internal contract, this should fail loudly here instead of
-    silently mismatching points to patches in production.
+    segfaults at scale) and builds the `points=` argument itself, keyed by patch
+    id. If a future refactor breaks that id tracking, this should fail loudly
+    here instead of silently mismatching points to patches in production.
     """
 
     def test_patch_points_match_dataset_labels(self, detect_dataset, tmp_path):
@@ -322,6 +321,70 @@ class TestPatchVisualizationCorrectness:
             assert set(results.label_ids) == actual_label_ids, (
                 "label_ids returned by the visualization do not match the dataset's actual detection ids"
             )
+
+        finally:
+            fo.delete_dataset(dataset_name)
+
+
+@pytest.mark.requires_dataset
+@pytest.mark.integration
+@pytest.mark.slow
+class TestInvalidPatchHandling:
+    """Guards patch-level processing against one malformed patch corrupting its siblings.
+
+    A patch with no bounding_box is expected to be excluded from embeddings/metrics
+    entirely (not misassigned, not faked). FiftyOne's ODM also coerces an explicitly
+    None bounding_box to an empty list on save, so the check must catch that case
+    too - and one bad patch must not discard the rest of its sample's valid crops.
+    """
+
+    def test_invalid_patch_excluded_without_affecting_siblings(self, detect_dataset, tmp_path):
+        dataset_name = "test_invalid_patch_handling"
+
+        if dataset_name in fo.list_datasets():
+            fo.delete_dataset(dataset_name)
+
+        dataset = load_yolo_dataset(_make_config(str(detect_dataset), DatasetTask.DETECTION, dataset_name, tmp_path))
+
+        try:
+            sample = dataset.first()
+            bad_detection = sample[DETECTION_FIELD].detections[0]
+            bad_id = bad_detection.id
+            bad_detection.bounding_box = None
+            sample.save()
+
+            total_detections = sum(
+                len(s[DETECTION_FIELD].detections) for s in dataset if s[DETECTION_FIELD] is not None
+            )
+
+            compute_embeddings(
+                dataset=dataset,
+                dataset_task=DatasetTask.DETECTION,
+                model_kwargs=EmbeddingsModel.OPENAI_CLIP.get_model_kwargs(),
+                batch_size=4,
+            )
+
+            results = dataset.load_brain_results(PATCH_EMBEDDINGS_KEY)
+            assert bad_id not in results.label_ids, "invalid patch should not get an embedding"
+            assert len(results.points) == total_detections - 1, (
+                "sibling patches in the same sample must still get embeddings"
+            )
+
+            compute_quality_metrics(dataset=dataset, dataset_task=DatasetTask.DETECTION, mask_background=True)
+            dataset.reload()
+            sample = dataset[sample.id]
+
+            def has_metrics(detection):
+                try:
+                    return detection.get_field("blurriness") is not None
+                except AttributeError:
+                    return False
+
+            bad_detection = next(d for d in sample[DETECTION_FIELD].detections if d.id == bad_id)
+            siblings = [d for d in sample[DETECTION_FIELD].detections if d.id != bad_id]
+
+            assert not has_metrics(bad_detection), "invalid patch should not get quality metrics"
+            assert all(has_metrics(d) for d in siblings), "sibling patches must still get quality metrics"
 
         finally:
             fo.delete_dataset(dataset_name)
