@@ -96,8 +96,7 @@ def compute_embeddings(
                 mask_background=mask_background,
             )
 
-            # FiftyOne's own UMAP call defaults to init="spectral", which segfaults via
-            # ARPACK at millions of points. Run UMAP ourselves with init="pca" instead.
+            # FiftyOne's UMAP defaults to init="spectral", which segfaults via ARPACK at this scale.
             embeddings, _, label_ids = fbu.get_embeddings(
                 dataset, patches_field=patches_field, embeddings=patch_embeddings
             )
@@ -194,7 +193,6 @@ def _compute_patch_embeddings(
         logger.warning("No crops extracted from dataset")
         return {}
 
-    # Concatenate each sample's accumulated batch-chunks into a single array
     embeddings_dict = {sample_id: np.vstack(chunks) for sample_id, chunks in per_sample_embeddings.items()}
 
     logger.info(f"Successfully computed embeddings for {total_crops} patches across {len(embeddings_dict)} samples")

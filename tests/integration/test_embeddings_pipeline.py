@@ -276,6 +276,60 @@ class TestPatchEmbeddings:
 @pytest.mark.requires_dataset
 @pytest.mark.integration
 @pytest.mark.slow
+class TestPatchVisualizationCorrectness:
+    """Guards the manual UMAP points path against FiftyOne internal-API drift.
+
+    `compute_embeddings` bypasses FiftyOne's own UMAP call (its spectral init
+    segfaults at scale) and instead calls the unofficial
+    `fiftyone.brain.internal.core.utils.get_embeddings()` to get correctly-ordered
+    sample/label ids for the `points=` argument. If a future FiftyOne release
+    changes that internal contract, this should fail loudly here instead of
+    silently mismatching points to patches in production.
+    """
+
+    def test_patch_points_match_dataset_labels(self, detect_dataset, tmp_path):
+        dataset_name = "test_patch_points_correctness"
+
+        if dataset_name in fo.list_datasets():
+            fo.delete_dataset(dataset_name)
+
+        dataset = load_yolo_dataset(_make_config(str(detect_dataset), DatasetTask.DETECTION, dataset_name, tmp_path))
+
+        try:
+            compute_embeddings(
+                dataset=dataset,
+                dataset_task=DatasetTask.DETECTION,
+                model_kwargs=EmbeddingsModel.OPENAI_CLIP.get_model_kwargs(),
+                batch_size=4,
+            )
+
+            brain_info = dataset.get_brain_info(PATCH_EMBEDDINGS_KEY)
+            assert brain_info.config.method == "manual"
+
+            results = dataset.load_brain_results(PATCH_EMBEDDINGS_KEY)
+
+            actual_label_ids = {
+                detection.id
+                for sample in dataset
+                if sample[DETECTION_FIELD] is not None
+                for detection in sample[DETECTION_FIELD].detections
+            }
+
+            assert len(results.points) == len(results.label_ids), "points and label_ids must be the same length"
+            assert len(results.label_ids) == len(actual_label_ids), (
+                f"Expected {len(actual_label_ids)} labeled points, got {len(results.label_ids)}"
+            )
+            assert set(results.label_ids) == actual_label_ids, (
+                "label_ids returned by the visualization do not match the dataset's actual detection ids"
+            )
+
+        finally:
+            fo.delete_dataset(dataset_name)
+
+
+@pytest.mark.requires_dataset
+@pytest.mark.integration
+@pytest.mark.slow
 class TestEmbeddingsFieldMapping:
     """Test that embeddings use correct fields for each task type."""
 

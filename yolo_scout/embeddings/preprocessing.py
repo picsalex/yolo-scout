@@ -212,8 +212,7 @@ def create_masked_crop_for_polyline(
 
 
 def _limit_worker_cv2_threads() -> None:
-    # OpenCV defaults to using every core for its own internal ops; with cpu_count() - 1
-    # worker processes each doing that too, it oversubscribes the same cores.
+    # Otherwise each of the cpu_count() - 1 worker processes also tries to use every core.
     cv2.setNumThreads(1)
 
 
@@ -328,7 +327,6 @@ def iter_patch_crops(
         logger.warning("No patches found in dataset")
         return
 
-    # Extract crops with multiprocessing, streaming results as they complete
     process_func = partial(
         worker_func,
         background_color=background_color,
