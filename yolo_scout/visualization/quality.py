@@ -44,7 +44,7 @@ def _entropy(gray: np.ndarray) -> float:
     hist = cv2.calcHist([gray], [0], None, [256], [0, 256]).flatten()
     hist = hist / (hist.sum() + 1e-10)
     non_zero = hist[hist > 0]
-    return float(-np.sum(non_zero * np.log2(non_zero)))
+    return float(np.sum(non_zero * np.log2(non_zero)) * -1)
 
 
 def _compute_patch_metrics(
@@ -79,7 +79,6 @@ def compute_quality_metrics(
     mask_background: bool,
 ) -> None:
     """Compute quality metrics for images and patches."""
-    cv2.setNumThreads(1)
     logger.info("Computing quality metrics...")
 
     # Image-level

@@ -4,11 +4,6 @@ CLI entry point
 
 """
 
-import os
-
-# Must be set before numba is imported anywhere (its thread pool can't shrink later).
-os.environ.setdefault("NUMBA_NUM_THREADS", "4")
-
 from yolo_scout.core.config import handle_special_commands
 from yolo_scout.utils.decorators import pipeline
 from yolo_scout.utils.logger import configure_external_loggers, logger
