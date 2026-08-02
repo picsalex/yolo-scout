@@ -9,7 +9,6 @@ import numpy as np
 import torch
 import umap
 from PIL import Image
-from tqdm import tqdm
 
 from yolo_scout.core.constants import (
     DETECTION_FIELD,
@@ -93,6 +92,10 @@ def compute_embeddings(
                 mask_background=mask_background,
             )
 
+            if not patch_embeddings:
+                logger.warning("No patch crops could be extracted, skipping patch visualization")
+                return
+
             # FiftyOne's UMAP defaults to init="spectral", which segfaults via ARPACK at this scale.
             label_ids = list(patch_embeddings.keys())
             embeddings = np.stack(list(patch_embeddings.values()))
@@ -149,8 +152,8 @@ def _compute_patch_embeddings(
     crop_buffer: list[Image.Image] = []
     patch_id_buffer: list[str] = []
 
-    def _embed_buffer() -> None:
-        batch_embeds = model.embed_all(crop_buffer)
+    def _embed(crops: list[Image.Image], patch_ids: list[str]) -> None:
+        batch_embeds = model.embed_all(crops)
 
         # Convert to numpy array if needed
         if hasattr(batch_embeds, "cpu"):
@@ -158,8 +161,7 @@ def _compute_patch_embeddings(
         elif not isinstance(batch_embeds, np.ndarray):
             batch_embeds = np.array(batch_embeds)
 
-        for patch_id, embedding in zip(patch_id_buffer, batch_embeds):
-            patch_embeddings[patch_id] = embedding
+        patch_embeddings.update(zip(patch_ids, batch_embeds))
 
     crop_stream = iter_patch_crops(
         dataset=dataset,
@@ -167,24 +169,20 @@ def _compute_patch_embeddings(
         dataset_task=dataset_task,
         background_color=(114, 114, 114),
         mask_background=mask_background,
+        desc="Computing patch embeddings",
     )
 
-    for _, crops in tqdm(crop_stream, desc="Computing embeddings"):
+    for _, crops in crop_stream:
         crop_buffer.extend(Image.fromarray(crop) for _, crop in crops)
         patch_id_buffer.extend(patch_id for patch_id, _ in crops)
 
         while len(crop_buffer) >= batch_size:
-            crop_buffer, remainder = crop_buffer[:batch_size], crop_buffer[batch_size:]
-            patch_id_buffer, patch_id_remainder = patch_id_buffer[:batch_size], patch_id_buffer[batch_size:]
-            _embed_buffer()
-            crop_buffer, patch_id_buffer = remainder, patch_id_remainder
+            _embed(crop_buffer[:batch_size], patch_id_buffer[:batch_size])
+            del crop_buffer[:batch_size]
+            del patch_id_buffer[:batch_size]
 
     if crop_buffer:
-        _embed_buffer()
-
-    if not patch_embeddings:
-        logger.warning("No crops extracted from dataset")
-        return {}
+        _embed(crop_buffer, patch_id_buffer)
 
     logger.info(f"Successfully computed embeddings for {len(patch_embeddings)} patches")
 

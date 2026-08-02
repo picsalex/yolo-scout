@@ -44,7 +44,7 @@ def _entropy(gray: np.ndarray) -> float:
     hist = cv2.calcHist([gray], [0], None, [256], [0, 256]).flatten()
     hist = hist / (hist.sum() + 1e-10)
     non_zero = hist[hist > 0]
-    return float(np.sum(non_zero * np.log2(non_zero)) * -1)
+    return float(-np.sum(non_zero * np.log2(non_zero)))
 
 
 def _compute_patch_metrics(
@@ -114,9 +114,10 @@ def compute_quality_metrics(
         dataset_task=dataset_task,
         mask_background=mask_background,
         worker_func=_compute_patch_metrics,
+        desc="Patch metrics",
     )
 
-    for sample_id, metrics_list in tqdm(metrics_stream, desc="Patch metrics"):
+    for sample_id, metrics_list in metrics_stream:
         sample = dataset[sample_id]
         patches_by_id = {patch.id: patch for patch in get_patches(sample)}
         for patch_id, metrics in metrics_list:

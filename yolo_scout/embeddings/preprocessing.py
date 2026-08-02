@@ -1,8 +1,11 @@
 """Image preprocessing for embeddings computation."""
 
-from collections.abc import Iterator
+from collections import deque
+from collections.abc import Callable, Iterator
 from functools import partial
-from multiprocessing import Pool, cpu_count
+from itertools import islice
+from multiprocessing import cpu_count
+from multiprocessing.pool import Pool
 
 import cv2
 import fiftyone as fo
@@ -11,6 +14,11 @@ from tqdm import tqdm
 
 from yolo_scout.core.enums import DatasetTask
 from yolo_scout.utils.logger import logger
+
+# Samples allowed in flight per worker. Pool.imap applies no backpressure, so workers
+# race through the whole dataset and every crop sits in the parent until consumed -
+# the exact leak this module streams to avoid.
+PENDING_SAMPLES_PER_WORKER = 4
 
 
 def create_mask_from_polyline(
@@ -216,6 +224,29 @@ def _limit_worker_cv2_threads() -> None:
     cv2.setNumThreads(1)
 
 
+def _imap_bounded(
+    pool: Pool,
+    func: Callable[[tuple], tuple[str, list]],
+    items: list[tuple],
+    max_pending: int,
+) -> Iterator[tuple[str, list]]:
+    """Like `pool.imap`, but never lets more than `max_pending` results pile up unconsumed.
+
+    `pool.imap` submits the whole iterable as fast as the workers can drain it and caches
+    every result in the parent, so a consumer slower than the workers (model inference vs.
+    cropping) ends up holding the entire dataset in memory. Submitting one replacement task
+    per consumed result keeps the workers fed without letting the backlog grow.
+    """
+    remaining = iter(items)
+    pending = deque(pool.apply_async(func, (item,)) for item in islice(remaining, max_pending))
+
+    while pending:
+        result = pending.popleft().get()
+        for item in islice(remaining, 1):
+            pending.append(pool.apply_async(func, (item,)))
+        yield result
+
+
 def process_sample_patches(
     sample_data: tuple[str, str, list, DatasetTask],
     background_color: tuple[int, int, int] = (114, 114, 114),
@@ -287,15 +318,17 @@ def iter_patch_crops(
     dataset_task: DatasetTask,
     background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-    worker_func=process_sample_patches,
+    worker_func: Callable[..., tuple[str, list]] = process_sample_patches,
+    desc: str = "Extracting crops",
 ) -> Iterator[tuple[str, list]]:
     """
     Stream per-sample worker results from a dataset with multiprocessing, one sample at a time.
 
-    Yields incrementally instead of materializing every crop in memory at once, so callers
-    can process-and-discard results in bounded-size batches. `worker_func` runs inside the
-    worker processes alongside crop extraction (default: returns the raw crops themselves;
-    pass a different worker to also compute per-crop results there instead of afterward).
+    Yields incrementally instead of materializing every crop in memory at once, and bounds
+    how far the workers may run ahead of the consumer, so a caller slower than the pool does
+    not accumulate the whole dataset. `worker_func` runs inside the worker processes alongside
+    crop extraction (default: returns the raw crops themselves; pass a different worker to also
+    compute per-crop results there instead of afterward).
 
     Args:
         dataset: FiftyOne dataset
@@ -304,6 +337,7 @@ def iter_patch_crops(
         background_color: RGB background color for masking (segment/obb only)
         mask_background: Whether to mask the background for segment/obb tasks (default: True)
         worker_func: Called per sample as (sample_data, background_color=..., mask_background=...)
+        desc: Progress bar label, since this is the only bar the caller's loop gets
 
     Yields:
         Tuple of (sample_id, list_of_results) for each sample that has patches
@@ -340,11 +374,13 @@ def iter_patch_crops(
         mask_background=mask_background,
     )
 
-    with Pool(processes=max(1, cpu_count() - 1), initializer=_limit_worker_cv2_threads) as pool:
+    workers = max(1, cpu_count() - 1)
+
+    with Pool(processes=workers, initializer=_limit_worker_cv2_threads) as pool:
         for sample_id, results in tqdm(
-            pool.imap(process_func, sample_data_list),
+            _imap_bounded(pool, process_func, sample_data_list, workers * PENDING_SAMPLES_PER_WORKER),
             total=len(sample_data_list),
-            desc="Extracting crops",
+            desc=desc,
         ):
             if results:
                 yield sample_id, results
