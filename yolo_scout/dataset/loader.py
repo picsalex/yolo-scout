@@ -2,10 +2,10 @@
 
 import os
 from dataclasses import dataclass
+from functools import partial
 
 import fiftyone as fo
 import yaml
-from tqdm import tqdm
 
 from yolo_scout.core.config import Config
 from yolo_scout.core.constants import (
@@ -23,6 +23,7 @@ from yolo_scout.dataset.converter import (
 from yolo_scout.dataset.metadata import extract_image_metadata
 from yolo_scout.dataset.parser import parse_yolo_annotation
 from yolo_scout.utils.logger import logger
+from yolo_scout.utils.parallel import imap_workers
 from yolo_scout.utils.path_utils import get_image_name
 from yolo_scout.visualization.iou import compute_iou_scores
 
@@ -196,34 +197,38 @@ def _process_split(
     # Get all image files
     image_files = sorted([f for f in os.listdir(split.images_dir) if f.lower().endswith(SUPPORTED_IMAGE_FORMATS)])
 
-    samples = []
+    if not image_files:
+        return
 
-    for img_file in tqdm(image_files, desc=f"Loading {split.name} images"):
-        sample = _create_sample(img_file=img_file, split=split, class_names=class_names, task=task)
-        if sample:
-            samples.append(sample)
+    build_fields = partial(_build_sample_fields, split=split, class_names=class_names, task=task)
 
-    if samples:
-        dataset.add_samples(samples)
-        logger.info(f"Added {len(samples)} samples from {split.name} split")
+    # Streamed into add_samples rather than collected first: holding every sample for a
+    # large split costs tens of GB, and add_samples batches the iterable itself.
+    samples = (
+        _create_sample(fields=fields, split_name=split.name)
+        for fields in imap_workers(build_fields, image_files)
+        if fields is not None
+    )
+
+    sample_ids = dataset.add_samples(samples, num_samples=len(image_files), progress=True)
+    logger.info(f"Added {len(sample_ids)} samples from {split.name} split")
 
 
-def _create_sample(
+def _build_sample_fields(
     img_file: str,
     split: SplitInfo,
     class_names: list[str],
     task: DatasetTask,
-) -> fo.Sample | None:
-    """Create a FiftyOne sample from an image file."""
+) -> dict | None:
+    """Compute every field for one image, returning None if it could not be read.
+
+    Runs in worker processes, so it must not build the `fo.Sample` itself: samples are not
+    picklable, while the label and metadata objects it returns are.
+    """
     image_path = os.path.join(split.images_dir, img_file)
 
-    # Create sample
-    sample = fo.Sample(filepath=image_path)
-    sample.tags.append(split.name)
-
     try:
-        # Add metadata
-        sample.metadata = extract_image_metadata(filepath=image_path)
+        metadata = extract_image_metadata(filepath=image_path)
 
         # Get label path
         label_file = os.path.splitext(img_file)[0] + ".txt"
@@ -231,6 +236,7 @@ def _create_sample(
 
         # Parse annotations
         annotations = parse_yolo_annotation(label_path=label_path, task=task) if label_path else None
+        fields = {}
         object_count = 0
 
         # Convert to FiftyOne labels
@@ -239,43 +245,54 @@ def _create_sample(
                 annotations=annotations,
                 task=task,
                 class_names=class_names,
-                image_width=sample.metadata.width,
-                image_height=sample.metadata.height,
+                image_width=metadata.width,
+                image_height=metadata.height,
                 split=split.name,
                 image_path=image_path,
                 label_path=label_path,
             )
 
             if labels:
-                field = get_field_name(task=task)
                 compute_iou_scores(labels=labels, dataset_task=task)
-                sample[field] = labels
+                fields[get_field_name(task=task)] = labels
 
                 # For pose, also add bounding boxes
                 if task == DatasetTask.POSE:
                     detection_labels = _create_detections_from_keypoints(
                         keypoints=labels,
-                        image_width=sample.metadata.width,
-                        image_height=sample.metadata.height,
+                        image_width=metadata.width,
+                        image_height=metadata.height,
                         image_path=image_path,
                         label_path=label_path,
                     )
                     compute_iou_scores(labels=detection_labels, dataset_task=DatasetTask.DETECTION)
-                    sample[DETECTION_FIELD] = detection_labels
+                    fields[DETECTION_FIELD] = detection_labels
 
                 object_count = _get_object_count(labels=labels)
 
-        sample["image_path"] = image_path
-        sample["label_path"] = label_path if label_path else None
-        sample["image_name"] = get_image_name(image_path)
-        sample["object_count"] = object_count
+        fields["metadata"] = metadata
+        fields["image_path"] = image_path
+        fields["label_path"] = label_path if label_path else None
+        fields["image_name"] = get_image_name(image_path)
+        fields["object_count"] = object_count
 
-        return sample
+        return fields
 
     # Broad by design: a single malformed image or label must not abort the whole load
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Failed to process {img_file}: {e}")
         return None
+
+
+def _create_sample(fields: dict, split_name: str) -> fo.Sample:
+    """Assemble a sample from worker-computed fields."""
+    sample = fo.Sample(filepath=fields["image_path"])
+    sample.tags.append(split_name)
+
+    for name, value in fields.items():
+        sample[name] = value
+
+    return sample
 
 
 def _create_detections_from_keypoints(
@@ -333,40 +350,42 @@ def _process_classification_split(
 
     logger.info(f"Found {len(class_dirs)} classes in {split.name}: {class_dirs}")
 
-    samples = []
+    image_paths = [
+        os.path.join(split.images_dir, class_name, img_file)
+        for class_name in class_dirs
+        for img_file in sorted(os.listdir(os.path.join(split.images_dir, class_name)))
+        if img_file.lower().endswith(SUPPORTED_IMAGE_FORMATS)
+    ]
 
-    for class_name in class_dirs:
-        class_dir = os.path.join(split.images_dir, class_name)
+    if not image_paths:
+        return
 
-        # Get all image files
-        image_files = sorted([f for f in os.listdir(class_dir) if f.lower().endswith(SUPPORTED_IMAGE_FORMATS)])
+    build_fields = partial(_build_classification_fields, split_name=split.name)
 
-        for img_file in tqdm(image_files, desc=f"Loading {split.name}/{class_name} images"):
-            image_path = os.path.join(class_dir, img_file)
+    samples = (
+        _create_sample(fields=fields, split_name=split.name)
+        for fields in imap_workers(build_fields, image_paths)
+        if fields is not None
+    )
 
-            # Create sample
-            sample = fo.Sample(filepath=image_path)
+    sample_ids = dataset.add_samples(samples, num_samples=len(image_paths), progress=True)
+    logger.info(f"Added {len(sample_ids)} samples from {split.name} split")
 
-            try:
-                sample.metadata = extract_image_metadata(filepath=image_path)
 
-                # Add classification label
-                field_name = get_field_name(task=DatasetTask.CLASSIFICATION)
-                sample[field_name] = fo.Classification(label=class_name, tags=[split.name])
-
-                sample["image_path"] = image_path
-                sample["image_name"] = get_image_name(image_path)
-                sample.tags.append(split.name)
-
-                samples.append(sample)
-
-            except OSError as e:
-                logger.warning(f"Failed to process {image_path}: {e}")
-                continue
-
-    if samples:
-        dataset.add_samples(samples)
-        logger.info(f"Added {len(samples)} samples from {split.name} split")
+def _build_classification_fields(image_path: str, split_name: str) -> dict | None:
+    """Compute every field for one classification image, keyed by its parent class directory."""
+    try:
+        return {
+            "metadata": extract_image_metadata(filepath=image_path),
+            get_field_name(task=DatasetTask.CLASSIFICATION): fo.Classification(
+                label=os.path.basename(os.path.dirname(image_path)), tags=[split_name]
+            ),
+            "image_path": image_path,
+            "image_name": get_image_name(image_path),
+        }
+    except OSError as e:
+        logger.warning(f"Failed to process {image_path}: {e}")
+        return None
 
 
 def _configure_dataset_fields(dataset: fo.Dataset, task: DatasetTask) -> None:

@@ -1,24 +1,18 @@
 """Image preprocessing for embeddings computation."""
 
-from collections import deque
 from collections.abc import Callable, Iterator
 from functools import partial
-from itertools import islice
-from multiprocessing import cpu_count
-from multiprocessing.pool import Pool
 
 import cv2
 import fiftyone as fo
 import numpy as np
+from fiftyone import ViewField as F
 from tqdm import tqdm
 
+from yolo_scout.core.constants import get_patches_attr
 from yolo_scout.core.enums import DatasetTask
 from yolo_scout.utils.logger import logger
-
-# Samples allowed in flight per worker. Pool.imap applies no backpressure, so workers
-# race through the whole dataset and every crop sits in the parent until consumed -
-# the exact leak this module streams to avoid.
-PENDING_SAMPLES_PER_WORKER = 4
+from yolo_scout.utils.parallel import imap_workers
 
 
 def create_mask_from_polyline(
@@ -219,32 +213,32 @@ def create_masked_crop_for_polyline(
     return cropped_image
 
 
-def _limit_worker_cv2_threads() -> None:
+def limit_worker_cv2_threads() -> None:
     # Otherwise each of the cpu_count() - 1 worker processes also tries to use every core.
     cv2.setNumThreads(1)
 
 
-def _imap_bounded(
-    pool: Pool,
-    func: Callable[[tuple], tuple[str, list]],
-    items: list[tuple],
-    max_pending: int,
-) -> Iterator[tuple[str, list]]:
-    """Like `pool.imap`, but never lets more than `max_pending` results pile up unconsumed.
+def _iter_sample_data(
+    dataset: fo.Dataset,
+    patches_field: str,
+    patches_attr: str,
+    dataset_task: DatasetTask,
+) -> Iterator[tuple[str, str, list, DatasetTask]]:
+    """Yield one worker payload per annotated sample, straight off the database cursor.
 
-    `pool.imap` submits the whole iterable as fast as the workers can drain it and caches
-    every result in the parent, so a consumer slower than the workers (model inference vs.
-    cropping) ends up holding the entire dataset in memory. Submitting one replacement task
-    per consumed result keeps the workers fed without letting the backlog grow.
+    Kept lazy so the dataset's entire patch set is never resident at once; on a large
+    dataset that list alone is several GB before a single crop has been made.
     """
-    remaining = iter(items)
-    pending = deque(pool.apply_async(func, (item,)) for item in islice(remaining, max_pending))
+    for sample in dataset.select_fields([patches_field, "filepath"]):
+        patches_obj = sample[patches_field]
+        if patches_obj is None:
+            continue
 
-    while pending:
-        result = pending.popleft().get()
-        for item in islice(remaining, 1):
-            pending.append(pool.apply_async(func, (item,)))
-        yield result
+        patches_list = getattr(patches_obj, patches_attr, None)
+        if not patches_list:
+            continue
+
+        yield sample.id, sample.filepath, patches_list, dataset_task
 
 
 def process_sample_patches(
@@ -324,11 +318,11 @@ def iter_patch_crops(
     """
     Stream per-sample worker results from a dataset with multiprocessing, one sample at a time.
 
-    Yields incrementally instead of materializing every crop in memory at once, and bounds
-    how far the workers may run ahead of the consumer, so a caller slower than the pool does
-    not accumulate the whole dataset. `worker_func` runs inside the worker processes alongside
-    crop extraction (default: returns the raw crops themselves; pass a different worker to also
-    compute per-crop results there instead of afterward).
+    Both ends are bounded: sample payloads are pulled off the database cursor on demand, and
+    the workers may only run a fixed distance ahead of the consumer. Neither the dataset's
+    patches nor its crops are ever fully resident. `worker_func` runs inside the worker
+    processes alongside crop extraction (default: returns the raw crops themselves; pass a
+    different worker to also compute per-crop results there instead of afterward).
 
     Args:
         dataset: FiftyOne dataset
@@ -342,29 +336,10 @@ def iter_patch_crops(
     Yields:
         Tuple of (sample_id, list_of_results) for each sample that has patches
     """
-    # Prepare sample data for workers
-    sample_data_list = []
+    patches_attr = get_patches_attr(task=dataset_task)
+    total = dataset.match(F(f"{patches_field}.{patches_attr}").length() > 0).count() if patches_attr else 0
 
-    for sample in dataset.select_fields([patches_field, "filepath"]):
-        patches_obj = sample[patches_field]
-
-        if patches_obj is None:
-            continue
-
-        # Get patches based on task type
-        if dataset_task in [DatasetTask.DETECTION, DatasetTask.POSE]:
-            patches_list = patches_obj.detections if hasattr(patches_obj, "detections") else []
-        elif dataset_task in [DatasetTask.SEGMENTATION, DatasetTask.OBB]:
-            patches_list = patches_obj.polylines if hasattr(patches_obj, "polylines") else []
-        else:
-            patches_list = []
-
-        if not patches_list:
-            continue
-
-        sample_data_list.append((sample.id, sample.filepath, patches_list, dataset_task))
-
-    if not sample_data_list:
+    if not total:
         logger.warning("No patches found in dataset")
         return
 
@@ -374,13 +349,12 @@ def iter_patch_crops(
         mask_background=mask_background,
     )
 
-    workers = max(1, cpu_count() - 1)
+    results = imap_workers(
+        process_func,
+        _iter_sample_data(dataset, patches_field, patches_attr, dataset_task),
+        initializer=limit_worker_cv2_threads,
+    )
 
-    with Pool(processes=workers, initializer=_limit_worker_cv2_threads) as pool:
-        for sample_id, results in tqdm(
-            _imap_bounded(pool, process_func, sample_data_list, workers * PENDING_SAMPLES_PER_WORKER),
-            total=len(sample_data_list),
-            desc=desc,
-        ):
-            if results:
-                yield sample_id, results
+    for sample_id, sample_results in tqdm(results, total=total, desc=desc):
+        if sample_results:
+            yield sample_id, sample_results

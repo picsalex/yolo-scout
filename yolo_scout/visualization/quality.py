@@ -5,10 +5,13 @@ import fiftyone as fo
 import numpy as np
 from tqdm import tqdm
 
-from yolo_scout.core.constants import DETECTION_FIELD, get_field_name
+from yolo_scout.core.constants import DETECTION_FIELD, get_field_name, get_patches_attr
 from yolo_scout.core.enums import DatasetTask
-from yolo_scout.embeddings.preprocessing import iter_patch_crops, process_sample_patches
+from yolo_scout.embeddings.preprocessing import iter_patch_crops, limit_worker_cv2_threads, process_sample_patches
 from yolo_scout.utils.logger import logger
+from yolo_scout.utils.parallel import imap_workers
+
+METRIC_NAMES = ("blurriness", "brightness", "aspect_ratio", "entropy")
 
 
 def _blurriness(gray: np.ndarray) -> float:
@@ -47,6 +50,38 @@ def _entropy(gray: np.ndarray) -> float:
     return float(-np.sum(non_zero * np.log2(non_zero)))
 
 
+def _metrics(gray: np.ndarray) -> dict[str, float]:
+    """The quality metrics for one grayscale image or crop."""
+    return {
+        "blurriness": _blurriness(gray),
+        "brightness": _brightness(gray),
+        "aspect_ratio": _aspect_ratio(gray),
+        "entropy": _entropy(gray),
+    }
+
+
+def _image_metrics(filepath: str) -> dict[str, float] | None:
+    """Compute one image's quality metrics, or None if it cannot be read."""
+    gray = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+    return _metrics(gray) if gray is not None else None
+
+
+def _compute_image_metrics(dataset: fo.Dataset) -> None:
+    """Compute image-level metrics in worker processes and write them in bulk.
+
+    Decoding every image is the work here, so it belongs in the pool rather than in a serial
+    loop; the results then go back as four `set_values` calls instead of one save per sample.
+    """
+    ids, filepaths = dataset.values(["id", "filepath"])
+
+    results = imap_workers(_image_metrics, filepaths, initializer=limit_worker_cv2_threads)
+    metrics = list(tqdm(results, total=len(filepaths), desc="Image metrics"))
+
+    for name in METRIC_NAMES:
+        values = {sample_id: m[name] for sample_id, m in zip(ids, metrics) if m is not None}
+        dataset.set_values(name, values, key_field="id")
+
+
 def _compute_patch_metrics(
     sample_data: tuple[str, str, list, DatasetTask],
     background_color: tuple[int, int, int] = (114, 114, 114),
@@ -56,20 +91,7 @@ def _compute_patch_metrics(
     sample_id, crops = process_sample_patches(
         sample_data, background_color=background_color, mask_background=mask_background
     )
-    metrics = []
-    for patch_id, crop in crops:
-        gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
-        metrics.append(
-            (
-                patch_id,
-                {
-                    "blurriness": _blurriness(gray),
-                    "brightness": _brightness(gray),
-                    "aspect_ratio": _aspect_ratio(gray),
-                    "entropy": _entropy(gray),
-                },
-            )
-        )
+    metrics = [(patch_id, _metrics(cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY))) for patch_id, crop in crops]
     return sample_id, metrics
 
 
@@ -81,16 +103,7 @@ def compute_quality_metrics(
     """Compute quality metrics for images and patches."""
     logger.info("Computing quality metrics...")
 
-    # Image-level
-    for sample in tqdm(dataset, desc="Image metrics"):
-        gray = cv2.imread(sample.filepath, cv2.IMREAD_GRAYSCALE)
-        if gray is None:
-            continue
-        sample["blurriness"] = _blurriness(gray)
-        sample["brightness"] = _brightness(gray)
-        sample["aspect_ratio"] = _aspect_ratio(gray)
-        sample["entropy"] = _entropy(gray)
-        sample.save()
+    _compute_image_metrics(dataset=dataset)
 
     # Patch-level
     if dataset_task == DatasetTask.CLASSIFICATION:
@@ -100,13 +113,13 @@ def compute_quality_metrics(
     if dataset_task == DatasetTask.POSE:
         patches_field = DETECTION_FIELD
 
-    is_detection_like = dataset_task in [DatasetTask.DETECTION, DatasetTask.POSE]
+    patches_attr = get_patches_attr(task=dataset_task)
 
-    def get_patches(sample):
-        obj = sample[patches_field]
-        if obj is None:
+    def get_patches(sample) -> list:
+        patches_obj = sample[patches_field]
+        if patches_obj is None:
             return []
-        return (obj.detections if is_detection_like else obj.polylines) or []
+        return getattr(patches_obj, patches_attr, None) or []
 
     metrics_stream = iter_patch_crops(
         dataset=dataset,
@@ -124,10 +137,8 @@ def compute_quality_metrics(
             patch = patches_by_id.get(patch_id)
             if patch is None:
                 continue
-            patch["blurriness"] = metrics["blurriness"]
-            patch["brightness"] = metrics["brightness"]
-            patch["aspect_ratio"] = metrics["aspect_ratio"]
-            patch["entropy"] = metrics["entropy"]
+            for name in METRIC_NAMES:
+                patch[name] = metrics[name]
         sample.save()
 
     logger.info("Quality metrics computed successfully")

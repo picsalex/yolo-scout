@@ -63,7 +63,6 @@ def compute_embeddings(
             brain_key=IMAGE_EMBEDDINGS_KEY,
             batch_size=batch_size,
             num_workers=min(MAX_IMAGE_EMBEDDING_WORKERS, os.cpu_count() or 1),
-            seed=0,
         )
         logger.info("Image embeddings and visualization computed successfully")
     except Exception as e:
@@ -99,14 +98,16 @@ def compute_embeddings(
             # FiftyOne's UMAP defaults to init="spectral", which segfaults via ARPACK at this scale.
             label_ids = list(patch_embeddings.keys())
             embeddings = np.stack(list(patch_embeddings.values()))
+            # No random_state: setting one silently forces n_jobs=1, leaving UMAP on a single
+            # core for the slowest stage of the run. Layout differs run to run as a result.
             points = umap.UMAP(
                 n_components=2,
                 n_neighbors=15,
                 metric="euclidean",
                 min_dist=0.1,
-                random_state=0,
                 init="pca",
                 low_memory=True,
+                n_jobs=-1,
                 verbose=True,
             ).fit_transform(embeddings)
 
