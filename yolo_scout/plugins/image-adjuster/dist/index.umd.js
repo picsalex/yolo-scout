@@ -1,34 +1,14 @@
-/*!
- * @ultralytics/image-adjuster v1.0.0
- *
- * Floating brightness / contrast / overlay-opacity controller for the
- * FiftyOne sample viewer.  Pure vanilla JS — zero dependencies, no build step.
- *
- * The trigger button is fixed-positioned to sit visually inside FiftyOne's
- * bottom-right looker controls bar without touching React's DOM at all.
- * The control card opens just above it.
- */
 (function () {
   "use strict";
 
   var _base = document.currentScript ? document.currentScript.src.replace(/\/dist\/[^/]+$/, '') : '';
-
-  /* ══════════════════════════════════════════════════════════════════════════
-   * 0.  SVG icon (loaded from images/slider.svg)
-   * ══════════════════════════════════════════════════════════════════════════ */
   var ICON_SVG = '';
   fetch(_base + '/images/slider.svg').then(function(r){return r.text();}).then(function(t){ICON_SVG=t;});
 
-  /* ══════════════════════════════════════════════════════════════════════════
-   * 1.  Shared state
-   * ══════════════════════════════════════════════════════════════════════════ */
   var adj  = { brightness: 100, contrast: 100, opacity: 100 };
   var card = null;
   var drag = null;
 
-  /* ══════════════════════════════════════════════════════════════════════════
-   * 2.  Finding the looker + canvases
-   * ══════════════════════════════════════════════════════════════════════════ */
   function getLooker() {
     // _lookerControls_ only exists while a sample viewer is open.
     // Use it as the sole presence check — no canvas size measurement needed.
@@ -160,9 +140,6 @@
     } catch (e) {}
   }
 
-  /* ══════════════════════════════════════════════════════════════════════════
-   * 3.  Applying adjustments
-   * ══════════════════════════════════════════════════════════════════════════ */
   function applyAdj() {
     if (!getLooker()) return;
     var flt = "brightness(" + adj.brightness + "%) contrast(" + adj.contrast + "%)";
@@ -179,9 +156,6 @@
     writeOpacity(adj.opacity / 100);
   }
 
-  /* ══════════════════════════════════════════════════════════════════════════
-   * 4.  CSS
-   * ══════════════════════════════════════════════════════════════════════════ */
   var STYLES = (
     /* ── Trigger button — lives inside the toolbar as a normal child ── */
     "#fo-ia-btn{" +
@@ -235,9 +209,6 @@
     document.head.appendChild(el);
   }
 
-  /* ══════════════════════════════════════════════════════════════════════════
-   * 5.  Control card
-   * ══════════════════════════════════════════════════════════════════════════ */
   function sliderRow(key, label, min, max) {
     return (
       '<label class="ia-lbl">' +
@@ -313,9 +284,6 @@
     return div;
   }
 
-  /* ══════════════════════════════════════════════════════════════════════════
-   * 6.  Trigger button
-   * ══════════════════════════════════════════════════════════════════════════ */
   function buildTrigger() {
     // Match FiftyOne's own toolbar item structure exactly:
     // <div class="_lookerClickable_..." style="padding:2px;display:flex;grid-area:...">
@@ -410,9 +378,6 @@
     // consistent with FiftyOne's native Color Settings behaviour.
   }
 
-  /* ══════════════════════════════════════════════════════════════════════════
-   * 7.  Drag
-   * ══════════════════════════════════════════════════════════════════════════ */
   document.addEventListener("mousemove", function (e) {
     if (!drag || !card) return;
     card.style.top    = (e.clientY - drag.oy) + "px";
@@ -422,9 +387,6 @@
   });
   document.addEventListener("mouseup", function () { drag = null; });
 
-  /* ══════════════════════════════════════════════════════════════════════════
-   * 8.  Main observer
-   * ══════════════════════════════════════════════════════════════════════════ */
   var debounceTimer = null;
   function onMutation() {
     clearTimeout(debounceTimer);
