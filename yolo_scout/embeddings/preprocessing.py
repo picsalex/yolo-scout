@@ -1,16 +1,18 @@
 """Image preprocessing for embeddings computation."""
 
+from collections.abc import Callable, Iterator
 from functools import partial
-from multiprocessing import Pool, cpu_count
 
 import cv2
 import fiftyone as fo
 import numpy as np
-from PIL import Image
+from fiftyone import ViewField as F
 from tqdm import tqdm
 
+from yolo_scout.core.constants import get_patches_attr
 from yolo_scout.core.enums import DatasetTask
 from yolo_scout.utils.logger import logger
+from yolo_scout.utils.parallel import imap_workers
 
 
 def create_mask_from_polyline(
@@ -211,13 +213,41 @@ def create_masked_crop_for_polyline(
     return cropped_image
 
 
+def limit_worker_cv2_threads() -> None:
+    # Otherwise each of the cpu_count() - 1 worker processes also tries to use every core.
+    cv2.setNumThreads(1)
+
+
+def _iter_sample_data(
+    dataset: fo.Dataset,
+    patches_field: str,
+    patches_attr: str,
+    dataset_task: DatasetTask,
+) -> Iterator[tuple[str, str, list, DatasetTask]]:
+    """Yield one worker payload per annotated sample, straight off the database cursor.
+
+    Kept lazy so the dataset's entire patch set is never resident at once; on a large
+    dataset that list alone is several GB before a single crop has been made.
+    """
+    for sample in dataset.select_fields([patches_field, "filepath"]):
+        patches_obj = sample[patches_field]
+        if patches_obj is None:
+            continue
+
+        patches_list = getattr(patches_obj, patches_attr, None)
+        if not patches_list:
+            continue
+
+        yield sample.id, sample.filepath, patches_list, dataset_task
+
+
 def process_sample_patches(
     sample_data: tuple[str, str, list, DatasetTask],
     background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> tuple[str, list[np.ndarray]]:
+) -> tuple[str, list[tuple[str, np.ndarray]]]:
     """
-    Process a single sample to extract all patch crops.
+    Process a single sample to extract patch crops.
     This function is designed to be called by worker processes.
 
     Args:
@@ -226,7 +256,9 @@ def process_sample_patches(
         mask_background: Whether to mask the background for segment/obb tasks (default: True)
 
     Returns:
-        Tuple of (sample_id, list_of_crops)
+        Tuple of (sample_id, list_of_(patch_id, crop)). Patches with invalid geometry
+        (missing bounding_box or points) are excluded entirely, not placeholder-filled -
+        callers must match crops back to patches by patch_id, not by list position.
     """
     sample_id, filepath, patches_list, task = sample_data
 
@@ -238,47 +270,59 @@ def process_sample_patches(
 
         # Convert BGR to RGB
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        crops = []
-
-        # Process based on task type
-        if task in [DatasetTask.DETECTION, DatasetTask.POSE]:
-            # For detection/pose: just crop to bbox
-            for patch in patches_list:
-                bbox = patch.bounding_box
-                if bbox is None:
-                    continue
-
-                crop = create_crop_for_detection(image, bbox)
-                crops.append(crop)
-
-        elif task in [DatasetTask.SEGMENTATION, DatasetTask.OBB]:
-            # For segmentation/obb: optionally mask background and crop
-            for patch in patches_list:
-                if not patch.points or len(patch.points) == 0:
-                    continue
-
-                polyline_points = patch.points[0]
-                crop = create_masked_crop_for_polyline(image, polyline_points, background_color, mask_background)
-                crops.append(crop)
-
-        return sample_id, crops
-
     # Broad by design: runs in worker processes, one bad sample must not kill the pool
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"Failed to process sample {filepath}: {e}")
+        logger.warning(f"Failed to load image {filepath}: {e}")
         return sample_id, []
 
+    crops = []
 
-def extract_all_patch_crops(
+    # Process based on task type. Each patch is cropped independently so one malformed
+    # patch can't discard the rest of the sample's otherwise-valid crops.
+    if task in [DatasetTask.DETECTION, DatasetTask.POSE]:
+        # For detection/pose: just crop to bbox
+        for patch in patches_list:
+            if not patch.bounding_box:
+                continue
+            try:
+                crop = create_crop_for_detection(image, patch.bounding_box)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to crop patch {patch.id} in {filepath}: {e}")
+                continue
+            crops.append((patch.id, crop))
+
+    elif task in [DatasetTask.SEGMENTATION, DatasetTask.OBB]:
+        # For segmentation/obb: optionally mask background and crop
+        for patch in patches_list:
+            if not patch.points or len(patch.points) == 0:
+                continue
+            try:
+                crop = create_masked_crop_for_polyline(image, patch.points[0], background_color, mask_background)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to crop patch {patch.id} in {filepath}: {e}")
+                continue
+            crops.append((patch.id, crop))
+
+    return sample_id, crops
+
+
+def iter_patch_crops(
     dataset: fo.Dataset,
     patches_field: str,
     dataset_task: DatasetTask,
     background_color: tuple[int, int, int] = (114, 114, 114),
     mask_background: bool = True,
-) -> tuple[list[Image.Image], list[str]]:
+    worker_func: Callable[..., tuple[str, list]] = process_sample_patches,
+    desc: str = "Extracting crops",
+) -> Iterator[tuple[str, list]]:
     """
-    Extract all patch crops from a dataset with multiprocessing.
+    Stream per-sample worker results from a dataset with multiprocessing, one sample at a time.
+
+    Both ends are bounded: sample payloads are pulled off the database cursor on demand, and
+    the workers may only run a fixed distance ahead of the consumer. Neither the dataset's
+    patches nor its crops are ever fully resident. `worker_func` runs inside the worker
+    processes alongside crop extraction (default: returns the raw crops themselves; pass a
+    different worker to also compute per-crop results there instead of afterward).
 
     Args:
         dataset: FiftyOne dataset
@@ -286,59 +330,31 @@ def extract_all_patch_crops(
         dataset_task: Dataset task type
         background_color: RGB background color for masking (segment/obb only)
         mask_background: Whether to mask the background for segment/obb tasks (default: True)
+        worker_func: Called per sample as (sample_data, background_color=..., mask_background=...)
+        desc: Progress bar label, since this is the only bar the caller's loop gets
 
-    Returns:
-        Tuple of (list_of_crops, sample_id_per_crop)
+    Yields:
+        Tuple of (sample_id, list_of_results) for each sample that has patches
     """
-    # Prepare sample data for workers
-    sample_data_list = []
+    patches_attr = get_patches_attr(task=dataset_task)
+    total = dataset.match(F(f"{patches_field}.{patches_attr}").length() > 0).count() if patches_attr else 0
 
-    for sample in dataset.select_fields([patches_field, "filepath"]):
-        patches_obj = sample[patches_field]
-
-        if patches_obj is None:
-            continue
-
-        # Get patches based on task type
-        if dataset_task in [DatasetTask.DETECTION, DatasetTask.POSE]:
-            patches_list = patches_obj.detections if hasattr(patches_obj, "detections") else []
-        elif dataset_task in [DatasetTask.SEGMENTATION, DatasetTask.OBB]:
-            patches_list = patches_obj.polylines if hasattr(patches_obj, "polylines") else []
-        else:
-            patches_list = []
-
-        if not patches_list:
-            continue
-
-        sample_data_list.append((sample.id, sample.filepath, patches_list, dataset_task))
-
-    if not sample_data_list:
+    if not total:
         logger.warning("No patches found in dataset")
-        return [], []
+        return
 
-    # Extract crops with multiprocessing
     process_func = partial(
-        process_sample_patches,
+        worker_func,
         background_color=background_color,
         mask_background=mask_background,
     )
 
-    with Pool(processes=max(1, cpu_count() - 1)) as pool:
-        results = list(
-            tqdm(
-                pool.imap(process_func, sample_data_list),
-                total=len(sample_data_list),
-                desc="Extracting crops",
-            )
-        )
+    results = imap_workers(
+        process_func,
+        _iter_sample_data(dataset, patches_field, patches_attr, dataset_task),
+        initializer=limit_worker_cv2_threads,
+    )
 
-    # Flatten crops and track which sample each crop belongs to
-    all_crops = []
-    sample_id_per_crop = []
-
-    for sample_id, crops in results:
-        for crop in crops:
-            all_crops.append(Image.fromarray(crop))
-            sample_id_per_crop.append(sample_id)
-
-    return all_crops, sample_id_per_crop
+    for sample_id, sample_results in tqdm(results, total=total, desc=desc):
+        if sample_results:
+            yield sample_id, sample_results

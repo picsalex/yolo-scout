@@ -1,10 +1,14 @@
 """Compute embeddings for images and patches."""
 
+import os
+
 import fiftyone as fo
 import fiftyone.brain as fob
 import fiftyone.zoo as foz
 import numpy as np
-from tqdm import tqdm
+import torch
+import umap
+from PIL import Image
 
 from yolo_scout.core.constants import (
     DETECTION_FIELD,
@@ -13,8 +17,14 @@ from yolo_scout.core.constants import (
     get_field_name,
 )
 from yolo_scout.core.enums import DatasetTask
-from yolo_scout.embeddings.preprocessing import extract_all_patch_crops
+from yolo_scout.embeddings.preprocessing import iter_patch_crops
 from yolo_scout.utils.logger import logger
+
+# Caps FiftyOne's per-worker mongod connections to avoid overwhelming it.
+MAX_IMAGE_EMBEDDING_WORKERS = 8
+
+# Keeps PyTorch's own thread pool from competing with the crop-extraction pool.
+CPU_INTRAOP_THREADS = 4
 
 
 def compute_embeddings(
@@ -34,6 +44,8 @@ def compute_embeddings(
         batch_size: Batch size for processing
         mask_background: Whether to mask background in patch crops for segment/obb tasks
     """
+    torch.set_num_threads(CPU_INTRAOP_THREADS)
+
     # Load embeddings model
     try:
         model = foz.load_zoo_model("open-clip-torch", **model_kwargs)
@@ -50,7 +62,7 @@ def compute_embeddings(
             method="umap",
             brain_key=IMAGE_EMBEDDINGS_KEY,
             batch_size=batch_size,
-            seed=0,
+            num_workers=min(MAX_IMAGE_EMBEDDING_WORKERS, os.cpu_count() or 1),
         )
         logger.info("Image embeddings and visualization computed successfully")
     except Exception as e:
@@ -79,14 +91,32 @@ def compute_embeddings(
                 mask_background=mask_background,
             )
 
-            # Pass pre-computed embeddings to FiftyOne
+            if not patch_embeddings:
+                logger.warning("No patch crops could be extracted, skipping patch visualization")
+                return
+
+            # FiftyOne's UMAP defaults to init="spectral", which segfaults via ARPACK at this scale.
+            label_ids = list(patch_embeddings.keys())
+            embeddings = np.stack(list(patch_embeddings.values()))
+            # No random_state: setting one silently forces n_jobs=1, leaving UMAP on a single
+            # core for the slowest stage of the run. Layout differs run to run as a result.
+            points = umap.UMAP(
+                n_components=2,
+                n_neighbors=15,
+                metric="euclidean",
+                min_dist=0.1,
+                init="pca",
+                low_memory=True,
+                n_jobs=-1,
+                verbose=True,
+            ).fit_transform(embeddings)
+
             fob.compute_visualization(
                 dataset,
                 patches_field=patches_field,
-                embeddings=patch_embeddings,
-                method="umap",
+                points=dict(zip(label_ids, points)),
+                method="manual",
                 brain_key=PATCH_EMBEDDINGS_KEY,
-                seed=0,
             )
 
             logger.info("Patch embeddings and visualization computed successfully")
@@ -116,29 +146,15 @@ def _compute_patch_embeddings(
         mask_background: Whether to mask background for segment/obb tasks
 
     Returns:
-        Dict mapping sample_id -> (num_patches, embedding_dim) numpy array
+        Dict mapping patch_id -> embedding vector. Patches with invalid geometry are
+        absent entirely (no embedding is computed for them).
     """
-    # Extract all crops
-    all_crops, sample_id_per_crop = extract_all_patch_crops(
-        dataset=dataset,
-        patches_field=patches_field,
-        dataset_task=dataset_task,
-        background_color=(114, 114, 114),
-        mask_background=mask_background,
-    )
+    patch_embeddings: dict[str, np.ndarray] = {}
+    crop_buffer: list[Image.Image] = []
+    patch_id_buffer: list[str] = []
 
-    if not all_crops:
-        logger.warning("No crops extracted from dataset")
-        return {}
-
-    logger.info(f"Extracted {len(all_crops)} crops, computing embeddings...")
-
-    # Batch inference
-    all_embeddings_list = []
-
-    for i in tqdm(range(0, len(all_crops), batch_size), desc="Computing embeddings"):
-        batch = all_crops[i : i + batch_size]
-        batch_embeds = model.embed_all(batch)
+    def _embed(crops: list[Image.Image], patch_ids: list[str]) -> None:
+        batch_embeds = model.embed_all(crops)
 
         # Convert to numpy array if needed
         if hasattr(batch_embeds, "cpu"):
@@ -146,20 +162,29 @@ def _compute_patch_embeddings(
         elif not isinstance(batch_embeds, np.ndarray):
             batch_embeds = np.array(batch_embeds)
 
-        all_embeddings_list.append(batch_embeds)
+        patch_embeddings.update(zip(patch_ids, batch_embeds))
 
-    # Concatenate all embeddings
-    all_embeddings = np.vstack(all_embeddings_list)
+    crop_stream = iter_patch_crops(
+        dataset=dataset,
+        patches_field=patches_field,
+        dataset_task=dataset_task,
+        background_color=(114, 114, 114),
+        mask_background=mask_background,
+        desc="Computing patch embeddings",
+    )
 
-    # Group embeddings by sample_id
-    embeddings_dict = {}
-    sample_id_per_crop_array = np.array(sample_id_per_crop)
+    for _, crops in crop_stream:
+        crop_buffer.extend(Image.fromarray(crop) for _, crop in crops)
+        patch_id_buffer.extend(patch_id for patch_id, _ in crops)
 
-    for sample_id in np.unique(sample_id_per_crop_array):
-        # Find all embeddings belonging to this sample
-        mask = sample_id_per_crop_array == sample_id
-        embeddings_dict[sample_id] = all_embeddings[mask]
+        while len(crop_buffer) >= batch_size:
+            _embed(crop_buffer[:batch_size], patch_id_buffer[:batch_size])
+            del crop_buffer[:batch_size]
+            del patch_id_buffer[:batch_size]
 
-    logger.info(f"Successfully computed embeddings for {len(all_crops)} patches across {len(embeddings_dict)} samples")
+    if crop_buffer:
+        _embed(crop_buffer, patch_id_buffer)
 
-    return embeddings_dict
+    logger.info(f"Successfully computed embeddings for {len(patch_embeddings)} patches")
+
+    return patch_embeddings

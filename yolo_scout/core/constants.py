@@ -79,6 +79,23 @@ def get_field_name(task: DatasetTask) -> str:
         raise ValueError(f"Unsupported dataset task: {task}")
 
 
+def get_patches_attr(task: DatasetTask) -> str | None:
+    """
+    Get the attribute holding the patch list on a task's label field.
+
+    Args:
+        task: The dataset task
+
+    Returns:
+        "detections", "polylines", or None for tasks that have no patches
+    """
+    if task in (DatasetTask.DETECTION, DatasetTask.POSE):
+        return "detections"
+    if task in (DatasetTask.SEGMENTATION, DatasetTask.OBB):
+        return "polylines"
+    return None
+
+
 def get_color_palette(labels: list[str]) -> list[dict[str, str]]:
     """
     Use the ultralytics color palette to generate a list of distinct colors.
