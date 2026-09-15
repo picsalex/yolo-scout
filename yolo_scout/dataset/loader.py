@@ -231,18 +231,32 @@ def _build_sample_fields(
     picklable, while the label and metadata objects it returns are.
     """
     image_path = os.path.join(split.images_dir, img_file)
+    corrupted = is_image_corrupted(image_path)
+
+    label_file = os.path.splitext(img_file)[0] + ".txt"
+    label_path = os.path.join(split.labels_dir, label_file) if split.labels_dir else None
+
+    fields = {
+        "image_path": image_path,
+        "label_path": label_path,
+        "image_name": get_image_name(image_path),
+        "object_count": 0,
+        "corrupted": corrupted,
+    }
 
     try:
         metadata = extract_image_metadata(filepath=image_path)
 
-        # Get label path
-        label_file = os.path.splitext(img_file)[0] + ".txt"
-        label_path = os.path.join(split.labels_dir, label_file) if split.labels_dir else None
+    except Exception as e:  # noqa
+        if not corrupted:
+            logger.warning(f"Failed to process {img_file}: {e}")
+            return None
 
+        return fields
+
+    try:
         # Parse annotations
         annotations = parse_yolo_annotation(label_path=label_path, task=task) if label_path else None
-        fields = {}
-        object_count = 0
 
         # Convert to FiftyOne labels
         if annotations:
@@ -273,18 +287,13 @@ def _build_sample_fields(
                     compute_iou_scores(labels=detection_labels, dataset_task=DatasetTask.DETECTION)
                     fields[DETECTION_FIELD] = detection_labels
 
-                object_count = _get_object_count(labels=labels)
+                fields["object_count"] = _get_object_count(labels=labels)
 
         fields["metadata"] = metadata
-        fields["image_path"] = image_path
-        fields["label_path"] = label_path if label_path else None
-        fields["image_name"] = get_image_name(image_path)
-        fields["object_count"] = object_count
-        fields["corrupted"] = is_image_corrupted(image_path)
 
         return fields
 
-    # Broad by design: a single malformed image or label must not abort the whole load
+    # Broad by design: a single malformed label must not abort the whole load
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Failed to process {img_file}: {e}")
         return None
@@ -382,19 +391,26 @@ def _process_classification_split(
 
 def _build_classification_fields(image_path: str, split_name: str) -> dict | None:
     """Compute every field for one classification image, keyed by its parent class directory."""
+    corrupted = is_image_corrupted(image_path)
+
+    fields = {
+        get_field_name(task=DatasetTask.CLASSIFICATION): fo.Classification(
+            label=os.path.basename(os.path.dirname(image_path)), tags=[split_name]
+        ),
+        "image_path": image_path,
+        "image_name": get_image_name(image_path),
+        "corrupted": corrupted,
+    }
+
     try:
-        return {
-            "metadata": extract_image_metadata(filepath=image_path),
-            get_field_name(task=DatasetTask.CLASSIFICATION): fo.Classification(
-                label=os.path.basename(os.path.dirname(image_path)), tags=[split_name]
-            ),
-            "image_path": image_path,
-            "image_name": get_image_name(image_path),
-            "corrupted": is_image_corrupted(image_path),
-        }
+        fields["metadata"] = extract_image_metadata(filepath=image_path)
+
     except OSError as e:
-        logger.warning(f"Failed to process {image_path}: {e}")
-        return None
+        if not corrupted:
+            logger.warning(f"Failed to process {image_path}: {e}")
+            return None
+
+    return fields
 
 
 def _configure_dataset_fields(dataset: fo.Dataset, task: DatasetTask) -> None:
