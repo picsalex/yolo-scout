@@ -7,10 +7,8 @@ from pathlib import Path
 import fiftyone as fo
 import fiftyone.utils.image as foui
 
-from yolo_scout.core.constants import THUMBNAIL_PATH_KEY
+from yolo_scout.core.constants import CORRUPTED_TAG, THUMBNAIL_PATH_KEY
 from yolo_scout.utils.logger import logger
-
-CORRUPTED_TAG = "corrupted"
 
 
 def generate_thumbnails(dataset: fo.Dataset, thumbnail_dir_path: str, thumbnail_width: int) -> None:
@@ -63,10 +61,7 @@ def generate_thumbnails(dataset: fo.Dataset, thumbnail_dir_path: str, thumbnail_
                     output_dir=thumbnail_dir_path,
                     rel_dir=common_base,
                     output_field=THUMBNAIL_PATH_KEY,
-                    skip_failures=True,
                 )
-
-        _tag_corrupted_images(clean_view)
 
         dataset.info["thumbnail_width"] = thumbnail_width
         dataset.save()
@@ -75,23 +70,6 @@ def generate_thumbnails(dataset: fo.Dataset, thumbnail_dir_path: str, thumbnail_
     except Exception as e:
         logger.error(f"Thumbnail generation failed: {e}")
         raise
-
-
-def _tag_corrupted_images(view: fo.DatasetView) -> None:
-    """Tag samples whose thumbnail was never written on disk, i.e. the source image failed to decode.
-
-    ``transform_images(..., skip_failures=True)`` still records an output path for failed samples,
-    so a missing file on disk is the only reliable signal that the transform didn't actually run.
-    """
-    ids, thumbnail_paths = view.exists(THUMBNAIL_PATH_KEY).values(["id", THUMBNAIL_PATH_KEY])
-    corrupted_ids = [i for i, p in zip(ids, thumbnail_paths) if not os.path.exists(p)]
-    if not corrupted_ids:
-        return
-
-    logger.warning(f"Detected {len(corrupted_ids)} corrupted image(s); tagging as '{CORRUPTED_TAG}'")
-    corrupted_view = view.select(corrupted_ids)
-    corrupted_view.set_values(THUMBNAIL_PATH_KEY, dict.fromkeys(corrupted_ids), key_field="id")
-    corrupted_view.tag_samples(CORRUPTED_TAG)
 
 
 def delete_thumbnails(dataset_name: str, thumbnail_dir: str) -> None:

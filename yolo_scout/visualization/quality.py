@@ -5,7 +5,7 @@ import fiftyone as fo
 import numpy as np
 from tqdm import tqdm
 
-from yolo_scout.core.constants import DETECTION_FIELD, get_field_name, get_patches_attr
+from yolo_scout.core.constants import CORRUPTED_TAG, DETECTION_FIELD, get_field_name, get_patches_attr
 from yolo_scout.core.enums import DatasetTask
 from yolo_scout.embeddings.preprocessing import iter_patch_crops, limit_worker_cv2_threads, process_sample_patches
 from yolo_scout.utils.logger import logger
@@ -102,6 +102,8 @@ def compute_quality_metrics(
 ) -> None:
     """Compute quality metrics for images and patches."""
     logger.info("Computing quality metrics...")
+
+    dataset = dataset.match_tags(CORRUPTED_TAG, bool=False)
 
     _compute_image_metrics(dataset=dataset)
 

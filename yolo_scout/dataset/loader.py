@@ -9,6 +9,7 @@ import yaml
 
 from yolo_scout.core.config import Config
 from yolo_scout.core.constants import (
+    CORRUPTED_TAG,
     DATASET_SPLITS,
     DETECTION_FIELD,
     SUPPORTED_IMAGE_FORMATS,
@@ -20,7 +21,7 @@ from yolo_scout.dataset.converter import (
     create_detection_from_keypoint,
     yolo_to_fiftyone,
 )
-from yolo_scout.dataset.metadata import extract_image_metadata
+from yolo_scout.dataset.metadata import extract_image_metadata, is_image_corrupted
 from yolo_scout.dataset.parser import parse_yolo_annotation
 from yolo_scout.utils.logger import logger
 from yolo_scout.utils.parallel import imap_workers
@@ -91,6 +92,10 @@ def load_yolo_dataset(config: Config) -> fo.Dataset:
     dataset.save()
 
     logger.info(f"Dataset created with {len(dataset)} total samples")
+
+    corrupted_count = len(dataset.match_tags(CORRUPTED_TAG))
+    if corrupted_count:
+        logger.warning(f"Found {corrupted_count} corrupted image(s), tagged as '{CORRUPTED_TAG}'")
 
     return dataset
 
@@ -275,6 +280,7 @@ def _build_sample_fields(
         fields["label_path"] = label_path if label_path else None
         fields["image_name"] = get_image_name(image_path)
         fields["object_count"] = object_count
+        fields["corrupted"] = is_image_corrupted(image_path)
 
         return fields
 
@@ -288,6 +294,8 @@ def _create_sample(fields: dict, split_name: str) -> fo.Sample:
     """Assemble a sample from worker-computed fields."""
     sample = fo.Sample(filepath=fields["image_path"])
     sample.tags.append(split_name)
+    if fields.pop("corrupted", False):
+        sample.tags.append(CORRUPTED_TAG)
 
     for name, value in fields.items():
         sample[name] = value
@@ -382,6 +390,7 @@ def _build_classification_fields(image_path: str, split_name: str) -> dict | Non
             ),
             "image_path": image_path,
             "image_name": get_image_name(image_path),
+            "corrupted": is_image_corrupted(image_path),
         }
     except OSError as e:
         logger.warning(f"Failed to process {image_path}: {e}")

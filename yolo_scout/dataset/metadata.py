@@ -36,6 +36,16 @@ def extract_image_metadata(filepath: str) -> fo.ImageMetadata:
         raise
 
 
+def is_image_corrupted(filepath: str) -> bool:
+    """Whether the image's pixel data fails to fully decode."""
+    try:
+        with Image.open(filepath) as img:
+            img.load()
+        return False
+    except Exception as _:  # noqa
+        return True
+
+
 def get_dimensions(filepath: str) -> tuple[int, int]:
     """Get image dimensions (width, height)."""
     with Image.open(filepath) as img:
@@ -53,7 +63,7 @@ def get_size_bytes(filepath: str) -> int:
     return os.path.getsize(filepath)
 
 
-def get_mime_type(filepath: str) -> str:
+def get_mime_type(filepath: str) -> str | None:
     """Get image MIME type."""
     with Image.open(filepath) as img:
         return img.get_format_mimetype()
