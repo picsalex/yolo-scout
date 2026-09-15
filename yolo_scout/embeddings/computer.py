@@ -50,6 +50,9 @@ def compute_embeddings(
     # Corrupted images can't be embedded, and a single one collapses fiftyone's whole batch
     # (skip_failures drops every sample in a failed batch, not just the offending one).
     dataset = dataset.match_tags(CORRUPTED_TAG, bool=False)
+    if len(dataset) == 0:
+        logger.warning("No decodable images found, skipping embeddings")
+        return
 
     # Load embeddings model
     try:

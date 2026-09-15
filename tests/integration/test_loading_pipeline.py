@@ -1,9 +1,14 @@
 """Integration tests for dataset loading pipeline."""
 
+import os
+
+import cv2
 import fiftyone as fo
+import numpy as np
 import pytest
 
 from yolo_scout.core.config import Config
+from yolo_scout.core.constants import CORRUPTED_TAG
 from yolo_scout.core.enums import DatasetTask, EmbeddingsModel
 from yolo_scout.dataset.loader import load_yolo_dataset
 
@@ -180,6 +185,70 @@ class TestDatasetLoading:
         try:
             assert dataset is not None
             assert len(dataset) > 0
+
+        finally:
+            fo.delete_dataset(dataset_name)
+
+
+@pytest.mark.integration
+class TestCorruptedImageHandling:
+    """Corrupted images must be kept and tagged, never silently dropped."""
+
+    @staticmethod
+    def _write_valid_jpeg(path: str) -> None:
+        # Random noise, not a flat color: a uniform image JPEG-compresses to almost nothing,
+        # leaving too little data for a truncated copy to keep a readable header.
+        image = np.random.randint(0, 255, (200, 300, 3), dtype=np.uint8)
+        cv2.imwrite(path, image, [cv2.IMWRITE_JPEG_QUALITY, 90])
+
+    def _build_split(self, tmp_path) -> str:
+        """Build a minimal detection dataset with a valid, a truncated, and a garbage image."""
+        data_dir = tmp_path / "corrupted_dataset"
+        img_dir = data_dir / "images" / "train"
+        img_dir.mkdir(parents=True)
+
+        good_path = str(img_dir / "good.jpg")
+        self._write_valid_jpeg(good_path)
+
+        with open(good_path, "rb") as f:
+            valid_bytes = bytearray(f.read())
+
+        # Header-readable but truncated: PIL's `.load()` raises, but `Image.open().size` doesn't.
+        truncated_path = str(img_dir / "truncated.jpg")
+        with open(truncated_path, "wb") as f:
+            f.write(valid_bytes[: len(valid_bytes) // 2])
+
+        # Not a real image at all: even the header read fails.
+        garbage_path = str(img_dir / "garbage.jpg")
+        with open(garbage_path, "wb") as f:
+            f.write(b"not an image" * 5)
+
+        return str(data_dir)
+
+    def test_corrupted_images_are_tagged_and_kept(self, tmp_path):
+        """All three images must remain in the dataset; only the bad ones get tagged."""
+        dataset_name = "test_corrupted_images"
+        if dataset_name in fo.list_datasets():
+            fo.delete_dataset(dataset_name)
+
+        data_dir = self._build_split(tmp_path)
+        dataset = load_yolo_dataset(_make_config(data_dir, DatasetTask.DETECTION, dataset_name, tmp_path))
+
+        try:
+            assert len(dataset) == 3, "corrupted images must be kept, not dropped"
+
+            corrupted = dataset.match_tags(CORRUPTED_TAG)
+            clean = dataset.match_tags(CORRUPTED_TAG, bool=False)
+            assert {os.path.basename(s.filepath) for s in corrupted} == {"truncated.jpg", "garbage.jpg"}
+            assert {os.path.basename(s.filepath) for s in clean} == {"good.jpg"}
+
+            # Truncated: header was readable, so metadata should still be present.
+            truncated_sample = next(s for s in corrupted if os.path.basename(s.filepath) == "truncated.jpg")
+            assert truncated_sample.metadata is not None
+
+            # Garbage: not decodable at all, not even the header.
+            garbage_sample = next(s for s in corrupted if os.path.basename(s.filepath) == "garbage.jpg")
+            assert garbage_sample.metadata is None
 
         finally:
             fo.delete_dataset(dataset_name)
