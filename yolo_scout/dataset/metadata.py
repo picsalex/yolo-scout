@@ -42,7 +42,8 @@ def is_image_corrupted(filepath: str) -> bool:
         with Image.open(filepath) as img:
             img.load()
         return False
-    except Exception as _:  # noqa
+    # Broad by design: PIL raises many error types for undecodable data
+    except Exception:  # noqa: BLE001
         return True
 
 
