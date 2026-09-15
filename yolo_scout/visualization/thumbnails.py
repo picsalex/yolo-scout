@@ -7,7 +7,7 @@ from pathlib import Path
 import fiftyone as fo
 import fiftyone.utils.image as foui
 
-from yolo_scout.core.constants import THUMBNAIL_PATH_KEY
+from yolo_scout.core.constants import CORRUPTED_TAG, THUMBNAIL_PATH_KEY
 from yolo_scout.utils.logger import logger
 
 
@@ -39,22 +39,24 @@ def generate_thumbnails(dataset: fo.Dataset, thumbnail_dir_path: str, thumbnail_
             return
 
         common_base = os.path.commonpath([os.path.dirname(p) for p in filepaths])
+        clean_view = dataset.match_tags(CORRUPTED_TAG, bool=False)
 
         # Resize along the largest dimension; set -1 on the smallest so FiftyOne
         # computes it automatically (handles both landscape and portrait images).
-        for size, view in [
+        for size, orientation_filter in [
             (
                 (thumbnail_width, -1),
-                dataset.match(fo.ViewField("metadata.width") >= fo.ViewField("metadata.height")),
+                fo.ViewField("metadata.width") >= fo.ViewField("metadata.height"),
             ),
             (
                 (-1, thumbnail_width),
-                dataset.match(fo.ViewField("metadata.height") > fo.ViewField("metadata.width")),
+                fo.ViewField("metadata.height") > fo.ViewField("metadata.width"),
             ),
         ]:
-            if len(view) > 0:
+            oriented_view = clean_view.match(orientation_filter)
+            if len(oriented_view) > 0:
                 foui.transform_images(
-                    view,
+                    oriented_view,
                     size=size,
                     output_dir=thumbnail_dir_path,
                     rel_dir=common_base,

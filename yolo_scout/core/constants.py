@@ -16,6 +16,9 @@ IMAGE_EMBEDDINGS_KEY = "images_embeddings"
 PATCH_EMBEDDINGS_KEY = "patches_embeddings"
 THUMBNAIL_PATH_KEY = "thumbnail_path"
 
+# Tag applied to samples whose image failed to fully decode
+CORRUPTED_TAG = "corrupted"
+
 # Ultralytics color palette
 ULTRALYTICS_COLORS = [
     "042AFF",

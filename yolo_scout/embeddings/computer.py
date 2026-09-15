@@ -11,6 +11,7 @@ import umap
 from PIL import Image
 
 from yolo_scout.core.constants import (
+    CORRUPTED_TAG,
     DETECTION_FIELD,
     IMAGE_EMBEDDINGS_KEY,
     PATCH_EMBEDDINGS_KEY,
@@ -45,6 +46,10 @@ def compute_embeddings(
         mask_background: Whether to mask background in patch crops for segment/obb tasks
     """
     torch.set_num_threads(CPU_INTRAOP_THREADS)
+
+    # Corrupted images can't be embedded, and a single one collapses fiftyone's whole batch
+    # (skip_failures drops every sample in a failed batch, not just the offending one).
+    dataset = dataset.match_tags(CORRUPTED_TAG, bool=False)
 
     # Load embeddings model
     try:
