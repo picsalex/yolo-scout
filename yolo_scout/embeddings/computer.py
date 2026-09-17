@@ -15,6 +15,7 @@ from yolo_scout.core.constants import (
     DETECTION_FIELD,
     IMAGE_EMBEDDINGS_KEY,
     PATCH_EMBEDDINGS_KEY,
+    SIMILARITY_INDEX_KEY,
     get_field_name,
 )
 from yolo_scout.core.enums import DatasetTask
@@ -61,18 +62,39 @@ def compute_embeddings(
         logger.error(f"Failed to load embeddings model: {e}")
         raise
 
-    # Compute image embeddings
-    logger.info("Computing image embeddings and visualization...")
+    # Compute image embeddings once, shared across similarity search, uniqueness, and the UMAP
+    # visualization (each would otherwise re-run the CLIP model over every image).
+    logger.info("Computing image embeddings, similarity index, uniqueness, and visualization...")
     try:
+        num_workers = min(MAX_IMAGE_EMBEDDING_WORKERS, os.cpu_count() or 1)
+
+        # Unlike compute_visualization, compute_similarity refuses to overwrite an existing
+        # index under the same brain_key (it may need backend cleanup first), so a rerun of
+        # this function over the same dataset must clear it explicitly.
+        if dataset.has_brain_run(SIMILARITY_INDEX_KEY):
+            dataset.delete_brain_run(SIMILARITY_INDEX_KEY)
+
+        # Pass the zoo model by name (not the loaded `model` instance) so the index stores
+        # enough to reconstruct it later via `get_model()` - e.g. from a FiftyOne App operator
+        # embedding a new query image in a different process/session.
+        similarity_index = fob.compute_similarity(
+            dataset,
+            model="open-clip-torch",
+            model_kwargs=model_kwargs,
+            brain_key=SIMILARITY_INDEX_KEY,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
+        fob.compute_uniqueness(dataset, similarity_index=similarity_index)
         fob.compute_visualization(
             dataset,
-            model=model,
+            similarity_index=similarity_index,
             method="umap",
             brain_key=IMAGE_EMBEDDINGS_KEY,
             batch_size=batch_size,
-            num_workers=min(MAX_IMAGE_EMBEDDING_WORKERS, os.cpu_count() or 1),
+            num_workers=num_workers,
         )
-        logger.info("Image embeddings and visualization computed successfully")
+        logger.info("Image embeddings, similarity index, uniqueness, and visualization computed successfully")
     except Exception as e:
         logger.error(f"Failed to compute image embeddings: {e}")
         raise

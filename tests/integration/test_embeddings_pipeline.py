@@ -4,7 +4,13 @@ import fiftyone as fo
 import pytest
 
 from yolo_scout.core.config import Config
-from yolo_scout.core.constants import DETECTION_FIELD, IMAGE_EMBEDDINGS_KEY, PATCH_EMBEDDINGS_KEY, get_field_name
+from yolo_scout.core.constants import (
+    DETECTION_FIELD,
+    IMAGE_EMBEDDINGS_KEY,
+    PATCH_EMBEDDINGS_KEY,
+    SIMILARITY_INDEX_KEY,
+    get_field_name,
+)
 from yolo_scout.core.enums import DatasetTask, EmbeddingsModel
 from yolo_scout.dataset.loader import load_yolo_dataset
 from yolo_scout.embeddings.computer import compute_embeddings
@@ -56,10 +62,14 @@ class TestImageEmbeddings:
 
             brain_keys = dataset.list_brain_runs()
             assert IMAGE_EMBEDDINGS_KEY in brain_keys, f"Image embeddings key not found. Available keys: {brain_keys}"
+            assert SIMILARITY_INDEX_KEY in brain_keys, f"Similarity index key not found. Available keys: {brain_keys}"
 
             brain_info = dataset.get_brain_info(IMAGE_EMBEDDINGS_KEY)
             assert brain_info is not None
             assert hasattr(brain_info, "config")
+
+            uniqueness_values = dataset.values("uniqueness")
+            assert any(v is not None for v in uniqueness_values), "uniqueness field was not populated"
 
         finally:
             fo.delete_dataset(dataset_name)
@@ -89,6 +99,7 @@ class TestImageEmbeddings:
 
                 brain_keys = dataset.list_brain_runs()
                 assert IMAGE_EMBEDDINGS_KEY in brain_keys, f"Image embeddings missing for {task_name}"
+                assert SIMILARITY_INDEX_KEY in brain_keys, f"Similarity index missing for {task_name}"
 
             finally:
                 if dataset_name in fo.list_datasets():
