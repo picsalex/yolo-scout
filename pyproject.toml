@@ -52,7 +52,7 @@ yolo-scout = "yolo_scout.cli:main"
 
 [dependency-groups]
 dev = [
-    "ruff==0.16.7",
+    "ruff",
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
