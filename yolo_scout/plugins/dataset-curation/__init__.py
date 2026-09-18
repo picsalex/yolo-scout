@@ -3,10 +3,11 @@
 
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import fiftyone.operators as foo
+import numpy as np
 import yaml
 from fiftyone.operators import types
 
@@ -22,22 +23,52 @@ def _load_similarity_index(dataset):
     return dataset.load_brain_results(SIMILARITY_INDEX_KEY)
 
 
-class SelectDiverseSubset(foo.Operator):
-    """Deduplicates near-duplicate clusters while preserving quality variation.
+def _k_center_greedy(embeddings: np.ndarray, quality_scores: np.ndarray, dist_thresh: float) -> list[int]:
+    """Greedily selects embeddings that cover the dataset within `dist_thresh`.
 
-    Groups the dataset into near-duplicate clusters by embedding distance
-    (fiftyone.brain's `find_duplicates`), then within each cluster keeps a few
-    samples spread evenly across the blurriness range (e.g. sharpest, median,
-    blurriest) instead of one arbitrary survivor. This removes redundancy
-    without silently discarding the capture-condition variety a model will see
-    in production. Samples with no near-duplicates are always kept as-is.
+    Starts from the highest-quality (lowest quality_scores) sample, then repeatedly
+    picks whichever remaining sample is farthest (cosine distance) from everything
+    already selected - ties broken by quality - stopping once every remaining sample
+    is already within `dist_thresh` of some selected one. Unlike a fixed-radius
+    near-duplicate sweep, this can't collapse a long chain of gradually-drifting
+    samples (e.g. a panning camera) down to a single survivor: each pick only has to
+    clear the growing selected set, not just its immediate neighbors, so the result
+    degrades smoothly as `dist_thresh` changes instead of jumping unpredictably.
+    """
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    normed = embeddings / np.clip(norms, 1e-12, None)
+
+    seed = int(np.argmin(quality_scores))
+    selected = [seed]
+    min_dists = 1.0 - normed @ normed[seed]
+    min_dists[seed] = -np.inf
+
+    while True:
+        farthest = min_dists.max()
+        if farthest <= dist_thresh:
+            break
+        candidates = np.flatnonzero(min_dists == farthest)
+        next_idx = int(candidates[np.argmin(quality_scores[candidates])])
+        selected.append(next_idx)
+        min_dists = np.minimum(min_dists, 1.0 - normed @ normed[next_idx])
+        min_dists[next_idx] = -np.inf
+
+    return selected
+
+
+class SelectDiverseSubset(foo.Operator):
+    """Selects a coverage-maximizing subset of the dataset via k-center-greedy.
+
+    See `_k_center_greedy` for the algorithm. The only input is a similarity
+    cutoff; how many samples that keeps is a consequence of the data, not a
+    number the user has to guess upfront.
     """
 
     @property
     def config(self):
         return foo.OperatorConfig(
             name="select_diverse_subset",
-            label="Select a diverse subset (dedupe, keep quality variation)",
+            label="Select a diverse subset (k-center-greedy)",
             dynamic=True,
             allow_delegated_execution=True,
         )
@@ -45,58 +76,43 @@ class SelectDiverseSubset(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         inputs.float(
-            "threshold",
-            default=0.2,
-            label="Near-duplicate threshold",
-            description="Embedding distance below which two samples are considered near-duplicates",
-        )
-        inputs.int(
-            "per_cluster",
-            default=3,
-            label="Samples to keep per cluster",
-            description="Spread evenly across the blurriness range, e.g. 3 = sharpest, median, blurriest",
+            "similarity",
+            default=0.9,
+            required=True,
+            label="Similarity threshold",
+            description=(
+                "0-1, where 1 means identical. Two kept samples are never allowed to be "
+                "more similar than this - lower keeps fewer, more diverse samples"
+            ),
         )
         return types.Property(inputs)
 
     def execute(self, ctx):
         dataset = ctx.dataset
         index = _load_similarity_index(dataset)
-        threshold = ctx.params.get("threshold") or 0.2
-        per_cluster = max(1, ctx.params.get("per_cluster") or 3)
+        similarity = min(max(ctx.params["similarity"], 0.0), 1.0)
+        dist_thresh = 1.0 - similarity
 
-        index.find_duplicates(thresh=threshold)
+        embeddings, sample_ids, _ = index.get_embeddings()
+        blurs = dataset.select(list(sample_ids), ordered=True).values("blurriness")
+        # Missing scores (e.g. corrupted images skipped during quality metrics) fall
+        # back to the worst score, so they never win a farthest-point tie by accident.
+        worst = max((b for b in blurs if b is not None), default=0.0)
+        quality_scores = np.array([worst if b is None else b for b in blurs])
 
-        isolated_ids = set(index.unique_ids) - set(index.neighbors_map.keys())
-        kept_ids = set(isolated_ids)
-
-        for rep_id, duplicates in index.neighbors_map.items():
-            member_ids = [rep_id] + [dup_id for dup_id, _ in duplicates]
-            ids, blurs = dataset.select(member_ids).values(["id", "blurriness"])
-
-            order = sorted(range(len(ids)), key=lambda i: (blurs[i] is None, blurs[i]))
-            sorted_ids = [ids[i] for i in order]
-
-            n = min(per_cluster, len(sorted_ids))
-            positions = {round(i * (len(sorted_ids) - 1) / max(n - 1, 1)) for i in range(n)}
-            kept_ids.update(sorted_ids[p] for p in positions)
-
-        view = dataset.select(list(kept_ids))
+        selected = _k_center_greedy(embeddings, quality_scores, dist_thresh)
+        kept_ids = [sample_ids[i] for i in selected]
+        view = dataset.select(kept_ids)
 
         # Delegated runs finish long after the App session that queued them may be
         # gone, so there's no live view to push into - save it as a named view
         # instead, and only push it live when we're actually running synchronously.
-        view_name = f"diverse_subset_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+        view_name = f"diverse_subset_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}"
         dataset.save_view(view_name, view)
         if not ctx.delegated:
             ctx.ops.set_view(view=view)
 
-        return {
-            "kept": len(view),
-            "total": len(dataset),
-            "clusters": len(index.neighbors_map),
-            "threshold": threshold,
-            "saved_view": view_name,
-        }
+        return {"kept": len(view), "total": len(dataset), "similarity": similarity, "saved_view": view_name}
 
 
 class ExportKeptView(foo.Operator):
