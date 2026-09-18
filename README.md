@@ -171,12 +171,43 @@ The supported URL schemes for the `data` argument are:
 
 ## 🧩 Additional installed plugins
 
-This tool ships with a custom-built FiftyOne plugin that is automatically
+This tool ships with custom-built FiftyOne plugins that are automatically
 installed at startup. No manual setup required.
 
-| Plugin                        | Description                                                                    | Icon                                                                   | How to use?                                                          |
-| ----------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `@ultralytics/image-adjuster` | Custom plugin to adjust image brightness, contrast, and label overlay opacity. | <img src="images/icons/image-adjuster.avif" alt="Image Adjuster icon"> | Open a sample, then click the slider icon in the bottom-left corner. |
+| Plugin                          | Description                                                                                                                                                          | Icon                                                                        | How to use?                                                              |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `@ultralytics/image-adjuster`   | Custom plugin to adjust image brightness, contrast, and label overlay opacity.                                                                                       | <img src="images/icons/image-adjuster.avif" alt="Image Adjuster icon">      | Open a sample, then click the slider icon in the bottom-left corner.     |
+| `@ultralytics/dataset-curation` | Select a diverse subset of your dataset and export it as a new YOLO dataset. See [Similarity search and dataset curation](#-similarity-search-and-dataset-curation). | <img src="images/icons/browse-operations.avif" alt="Operator browser icon"> | Click the operator browser icon, then select the operator from the list. |
+
+## 🔎 Similarity search and dataset curation
+
+Unless `skip_embeddings` is set, every dataset gets a similarity index and a `uniqueness` field computed
+automatically alongside the CLIP embeddings, at no extra cost since they reuse the same embeddings. These power two
+workflows.
+
+### 1. Finding similar images
+
+This is a native FiftyOne feature, nothing extra to install. Click the `+` next to the Samples tab, open the
+Similarity Search panel, and click New Search. You can search using an image already in the dataset, or upload an
+external one (a production image, for example) to find its closest matches.
+
+### 2. Finding redundant images
+
+Every sample gets a `uniqueness` field, `1` meaning very different from the rest of the dataset and values close to
+`0` meaning near-duplicates of other samples. Sort or filter by it in the sidebar to spot the most redundant images,
+or the most unique ones.
+
+### 3. Selecting a diverse subset and exporting it
+
+Use the two operators from the `@ultralytics/dataset-curation` plugin together. Click the operator browser icon and
+select the operator from the list, one at a time.
+
+1. **_Select a diverse subset (k-center-greedy)_**: set a similarity threshold between 0 and 1, where 1 means
+   identical. No two kept images will ever be more similar than this threshold, so a lower value keeps fewer, more
+   diverse images. How many images this keeps depends on your dataset, not a number you pick upfront, so start
+   around `0.9` and adjust based on the resulting count.
+2. **_Export current view as a YOLO dataset_**: pick an output directory. The current view (the one from step 1, or
+   any other filter you've applied) is copied there as a new YOLO dataset, images and label files copied as-is and the splits are preserved.
 
 ## ⚒️ Dataset Structure
 

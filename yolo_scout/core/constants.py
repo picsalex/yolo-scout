@@ -14,6 +14,7 @@ OBB_FIELD = "obb_bounding_boxes"
 # Brain keys for embeddings
 IMAGE_EMBEDDINGS_KEY = "images_embeddings"
 PATCH_EMBEDDINGS_KEY = "patches_embeddings"
+SIMILARITY_INDEX_KEY = "similarity_index"
 THUMBNAIL_PATH_KEY = "thumbnail_path"
 
 # Tag applied to samples whose image failed to fully decode

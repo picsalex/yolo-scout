@@ -15,6 +15,7 @@ from yolo_scout.core.constants import (
     DETECTION_FIELD,
     IMAGE_EMBEDDINGS_KEY,
     PATCH_EMBEDDINGS_KEY,
+    SIMILARITY_INDEX_KEY,
     get_field_name,
 )
 from yolo_scout.core.enums import DatasetTask
@@ -45,6 +46,7 @@ def compute_embeddings(
         batch_size: Batch size for processing
         mask_background: Whether to mask background in patch crops for segment/obb tasks
     """
+    model_name = "open-clip-torch"
     torch.set_num_threads(CPU_INTRAOP_THREADS)
 
     # Corrupted images can't be embedded, and a single one collapses fiftyone's whole batch
@@ -56,23 +58,41 @@ def compute_embeddings(
 
     # Load embeddings model
     try:
-        model = foz.load_zoo_model("open-clip-torch", **model_kwargs)
+        model = foz.load_zoo_model(name_or_url=model_name, **model_kwargs)
     except Exception as e:
         logger.error(f"Failed to load embeddings model: {e}")
         raise
 
-    # Compute image embeddings
-    logger.info("Computing image embeddings and visualization...")
+    # Compute image embeddings once, shared across similarity search, uniqueness, and the UMAP
+    # visualization (each would otherwise re-run the CLIP model over every image).
+    logger.info("Computing image embeddings, similarity index, uniqueness, and visualization...")
     try:
+        num_workers = min(MAX_IMAGE_EMBEDDING_WORKERS, os.cpu_count() or 1)
+
+        # Unlike compute_visualization, compute_similarity refuses to overwrite an existing
+        # index under the same brain_key (it may need backend cleanup first), so a rerun of
+        # this function over the same dataset must clear it explicitly.
+        if dataset.has_brain_run(SIMILARITY_INDEX_KEY):
+            dataset.delete_brain_run(SIMILARITY_INDEX_KEY)
+
+        similarity_index = fob.compute_similarity(
+            dataset,
+            model=model_name,
+            model_kwargs=model_kwargs,
+            brain_key=SIMILARITY_INDEX_KEY,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
+        fob.compute_uniqueness(dataset, similarity_index=similarity_index)
         fob.compute_visualization(
             dataset,
-            model=model,
+            similarity_index=similarity_index,
             method="umap",
             brain_key=IMAGE_EMBEDDINGS_KEY,
             batch_size=batch_size,
-            num_workers=min(MAX_IMAGE_EMBEDDING_WORKERS, os.cpu_count() or 1),
+            num_workers=num_workers,
         )
-        logger.info("Image embeddings and visualization computed successfully")
+        logger.info("Image embeddings, similarity index, uniqueness, and visualization computed successfully")
     except Exception as e:
         logger.error(f"Failed to compute image embeddings: {e}")
         raise

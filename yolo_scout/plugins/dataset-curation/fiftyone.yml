@@ -1,0 +1,7 @@
+name: "@ultralytics/dataset-curation"
+version: "1.0.8"
+description: "Select a subset via a similarity threshold (k-center-greedy), and export the current view as a YOLO dataset"
+fiftyone_compatibility: ">=1.0"
+operators:
+  - select_diverse_subset
+  - export_kept_view
