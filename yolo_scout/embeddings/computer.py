@@ -46,6 +46,7 @@ def compute_embeddings(
         batch_size: Batch size for processing
         mask_background: Whether to mask background in patch crops for segment/obb tasks
     """
+    model_name = "open-clip-torch"
     torch.set_num_threads(CPU_INTRAOP_THREADS)
 
     # Corrupted images can't be embedded, and a single one collapses fiftyone's whole batch
@@ -57,7 +58,7 @@ def compute_embeddings(
 
     # Load embeddings model
     try:
-        model = foz.load_zoo_model("open-clip-torch", **model_kwargs)
+        model = foz.load_zoo_model(name_or_url=model_name, **model_kwargs)
     except Exception as e:
         logger.error(f"Failed to load embeddings model: {e}")
         raise
@@ -74,12 +75,9 @@ def compute_embeddings(
         if dataset.has_brain_run(SIMILARITY_INDEX_KEY):
             dataset.delete_brain_run(SIMILARITY_INDEX_KEY)
 
-        # Pass the zoo model by name (not the loaded `model` instance) so the index stores
-        # enough to reconstruct it later via `get_model()` - e.g. from a FiftyOne App operator
-        # embedding a new query image in a different process/session.
         similarity_index = fob.compute_similarity(
             dataset,
-            model="open-clip-torch",
+            model=model_name,
             model_kwargs=model_kwargs,
             brain_key=SIMILARITY_INDEX_KEY,
             batch_size=batch_size,
