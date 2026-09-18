@@ -145,6 +145,9 @@ class ExportKeptView(foo.Operator):
         view = ctx.view if ctx.view is not None else ctx.dataset
         out_dir = Path(ctx.params["output_dir"]["absolute_path"])
 
+        if out_dir.exists() and any(out_dir.iterdir()):
+            raise ValueError(f"Output directory '{out_dir}' is not empty. Choose an empty directory to export into.")
+
         images_copied = 0
         has_labels = False
 

@@ -13,6 +13,12 @@ _PLUGINS_DIR = Path(__file__).parents[1] / "plugins"
 
 def ensure_plugins() -> None:
     """Copy every local plugin into FiftyOne's plugin directory."""
+    if not _PLUGINS_DIR.is_dir():
+        # Distributions that don't bundle non-package data (e.g. a stripped wheel) won't
+        # have this directory - skip installation instead of crashing the pipeline.
+        logger.debug(f"No plugins directory found at {_PLUGINS_DIR}, skipping plugin installation")
+        return
+
     for src in sorted(_PLUGINS_DIR.iterdir()):
         if (src / "fiftyone.yml").exists():
             _ensure_plugin(src.resolve())
